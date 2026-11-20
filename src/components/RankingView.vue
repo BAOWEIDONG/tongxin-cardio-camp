@@ -15,19 +15,17 @@ const store = useAppStore();
 const highlightedId = ref<string | null>(null);
 const showRules = ref(false);
 const isRefreshing = ref(false);
+const isDietitian = computed(() => store.user?.role === 'dietitian');
 
 
 // ─── 营期选择 ───
 // 学员端：显示自己所属的营期列表（多期可切换）
 // 营养师端：显示所有营期，可手动切换
-const isDietitian = computed(() => store.user?.role === 'dietitian');
-
 // 可选营期列表
 // 学员端：只显示自己 campIds 中的营期；营养师端：显示所有营期
 const availableCamps = computed(() => {
-  if (isDietitian.value) return store.camps;
   if (store.user?.role === 'student') return store.getStudentCamps(store.user.id);
-  return store.camps;
+  return store.getAccessibleCamps();
 });
 
 // 营养师端用 store.selectedCampId（与 Dashboard 共享），学员端也用 store.selectedCampId

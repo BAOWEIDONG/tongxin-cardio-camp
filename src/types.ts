@@ -11,6 +11,8 @@ export interface Camp {
   startDate?: string;  // 开营日期 YYYY-MM-DD
   endDate?: string;    // 结营日期 YYYY-MM-DD
   status: 'upcoming' | 'active' | 'ended';
+  /** 所属医院/机构：用于集团-医院两级数据隔离 */
+  organization?: string;
 }
 
 /** 账户（手机号 = 登录凭证，只有配置了手机号的人才能登录） */
@@ -23,6 +25,8 @@ export interface Account {
   organization?: string;
   /** 管理级别：platform=国际医院一级管理，org=医院/机构二级操作 */
   adminLevel?: 'platform' | 'org';
+  /** 单独配置的菜单/操作权限；为空时继承「医院 + 角色」模板 */
+  permissions?: string[];
   /** 学员所属期（可多选，同一人可参与多期；教练/营养师不强制） */
   campIds?: string[];
   /** 是否启用（禁用后该手机号无法登录） */
@@ -45,6 +49,8 @@ export interface User {
   phone: string;
   organization?: string;
   adminLevel?: 'platform' | 'org';
+  /** 当前账号生效的菜单/操作权限（登录时由账户与医院模板计算） */
+  permissions?: string[];
   gender?: 'male' | 'female';
   age?: number;
   height?: number;

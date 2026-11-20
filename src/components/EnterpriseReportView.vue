@@ -12,7 +12,7 @@ import { exportReport } from '../lib/exportPDF';
 const store = useAppStore();
 
 // ─── 营期：仅展示当前营期，由首页全局营期控制（无本地切换） ───
-const selectedCamp = computed(() => store.selectedCampId ? store.camps.find((c) => c.id === store.selectedCampId) : null);
+const selectedCamp = computed(() => store.selectedCampId ? store.getAccessibleCamps().find((c) => c.id === store.selectedCampId) : null);
 // 进行中营期按开营到今天计算，与学员端报告口径一致
 const campDays = computed(() => selectedCamp.value ? elapsedCampDays(selectedCamp.value) : campDaysOf(selectedCamp.value));
 
@@ -46,6 +46,95 @@ const { data: summary, done: summaryReady } = useDeferred(() =>
 // 企业汇报版（匿名聚合），summary 就绪后生成
 const report = computed(() => summary.value ? generateEnterpriseReport(summary.value) : null);
 
+const cardioStats = computed(() => {
+  if (!summary.value) {
+    return {
+      bpEligible: 0, bpControlled: 0, bpRate: null as number | null,
+      ldlEligible: 0, ldlControlled: 0, ldlRate: null as number | null,
+      highRisk: 0, highRiskRate: null as number | null,
+      rxSigned: 0, rxRate: null as number | null,
+      followupCovered: 0, followupRate: null as number | null,
+      lowSaltRate: null as number | null, weightWarning: 0,
+    };
+  }
+  const reports = summary.value.studentReports;
+  const campId = store.selectedCampId;
+  let bpEligible = 0; let bpControlled = 0; let ldlEligible = 0; let ldlControlled = 0; let highRisk = 0;
+  reports.forEach((r) => {
+    const sbp = r.metricChanges.find((m) => m.configId === 'mc_cv_sbp');
+    const dbp = r.metricChanges.find((m) => m.configId === 'mc_cv_dbp');
+    const ldl = r.metricChanges.find((m) => m.configId === 'mc_bl_ldl');
+    const sbpValue = typeof (sbp?.afterValue ?? sbp?.beforeValue) === 'number' ? Number(sbp?.afterValue ?? sbp?.beforeValue) : null;
+    const dbpValue = typeof (dbp?.afterValue ?? dbp?.beforeValue) === 'number' ? Number(dbp?.afterValue ?? dbp?.beforeValue) : null;
+    const ldlValue = typeof (ldl?.afterValue ?? ldl?.beforeValue) === 'number' ? Number(ldl?.afterValue ?? ldl?.beforeValue) : null;
+    if (sbpValue !== null && dbpValue !== null) {
+      bpEligible++;
+      if (sbpValue < 130 && dbpValue < 80) bpControlled++;
+      if (sbpValue >= 160 || dbpValue >= 100) highRisk++;
+    }
+    if (ldlValue !== null) {
+      ldlEligible++;
+      if (ldlValue < 2.6) ldlControlled++;
+      if (ldlValue >= 4.1) highRisk++;
+    }
+  });
+  const studentIds = new Set(reports.map((r) => r.studentId));
+  const signedRx = new Set(
+    store.prescriptions
+      .filter((p) => p.status === 'signed' && (!campId || p.campId === campId) && studentIds.has(p.studentId))
+      .map((p) => p.studentId),
+  );
+  const followed = new Set(
+    store.chatThreads
+      .filter((t) => (!campId || t.campId === campId) && studentIds.has(t.studentId)
+        && t.messages.some((m) => m.senderRole !== 'student' && m.senderRole !== 'system'))
+      .map((t) => t.studentId),
+  );
+  const taggedDiet = campDietRecords.value.filter((r) => r.lowSalt !== undefined);
+  const scoredDiet = campDietRecords.value.filter((r) => typeof r.dietitianScore === 'number');
+  const lowSaltRate = taggedDiet.length
+    ? taggedDiet.filter((r) => r.lowSalt).length / taggedDiet.length
+    : scoredDiet.length
+      ? scoredDiet.filter((r) => (r.dietitianScore ?? 0) >= 1).length / scoredDiet.length
+      : null;
+  let weightWarning = 0;
+  studentIds.forEach((id) => {
+    const records = campWeightRecords.value
+      .filter((r) => r.studentId === id)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (records.length < 2) return;
+    const latest = records[records.length - 1];
+    const latestTime = new Date(latest.date.replace(/-/g, '/')).getTime();
+    const recent = records.filter((r) => {
+      const t = new Date(r.date.replace(/-/g, '/')).getTime();
+      return latestTime - t <= 7 * 86400000;
+    });
+    if (recent.length >= 2 && latest.weight - recent[0].weight >= 2) weightWarning++;
+  });
+  return {
+    bpEligible, bpControlled,
+    bpRate: bpEligible ? bpControlled / bpEligible : null,
+    ldlEligible, ldlControlled,
+    ldlRate: ldlEligible ? ldlControlled / ldlEligible : null,
+    highRisk, highRiskRate: reports.length ? highRisk / reports.length : null,
+    rxSigned: signedRx.size, rxRate: reports.length ? signedRx.size / reports.length : null,
+    followupCovered: followed.size, followupRate: reports.length ? followed.size / reports.length : null,
+    lowSaltRate,
+    weightWarning,
+  };
+});
+
+const cardioHighlights = computed(() => {
+  if (!cardioStats.value) return [];
+  const s = cardioStats.value;
+  const items: string[] = [];
+  if (s.bpRate !== null) items.push(`血压达到一般管理目标（<130/80）的学员 ${s.bpControlled}/${s.bpEligible} 人，达标率 ${fmtPct(s.bpRate)}`);
+  if (s.ldlRate !== null) items.push(`LDL-C 达到常用高危目标（<2.6 mmol/L）的学员 ${s.ldlControlled}/${s.ldlEligible} 人，达标率 ${fmtPct(s.ldlRate)}`);
+  if (s.rxRate !== null) items.push(`运动处方签署覆盖 ${s.rxSigned}/${summary.value?.totalStudents || 0} 人，签署率 ${fmtPct(s.rxRate)}`);
+  if (s.followupRate !== null) items.push(`团队随访覆盖 ${s.followupCovered}/${summary.value?.totalStudents || 0} 人，覆盖率 ${fmtPct(s.followupRate)}`);
+  return items.slice(0, 4);
+});
+
 const fmt = (v: number | null, digits = 1): string => (v === null ? '--' : v.toFixed(digits));
 const fmtPct = (v: number | null): string => (v === null ? '--' : `${Math.round(v * 100)}%`);
 
@@ -60,9 +149,9 @@ const handleExport = () => {
 
 <template>
   <div class="flex min-h-full flex-col bg-[#F7F8FA] pb-24 font-sans">
-    <NavBar title="企业汇报版" :on-back="store.goBack">
+    <NavBar title="机构健康报告" :on-back="store.goBack">
       <template #right>
-        <button class="text-[#0B5FD7] hover:bg-green-50 p-2 rounded-full transition-colors" @click="handleExport">
+        <button v-if="store.hasPermission('action.export_report')" class="text-[#0B5FD7] hover:bg-green-50 p-2 rounded-full transition-colors" @click="handleExport">
           <Download class="h-5 w-5" />
         </button>
       </template>
@@ -87,7 +176,7 @@ const handleExport = () => {
       <div class="flex items-start gap-2 bg-[#0B5FD7]/5 border border-[#0B5FD7]/15 rounded-xl px-3 py-2.5" data-html2canvas-ignore>
         <ShieldCheck class="w-4 h-4 text-[#0B5FD7] shrink-0 mt-0.5" />
         <p class="text-[11px] text-gray-500 leading-relaxed">
-          本页仅含匿名聚合数据，无任何学员个人健康信息，可放心导出发送给企业 HR。
+          本页仅含机构匿名聚合数据，不含学员个人健康明细，可用于院内质控与机构汇报。
         </p>
       </div>
 
@@ -95,29 +184,29 @@ const handleExport = () => {
       <div class="bg-gradient-to-br from-[#0B5FD7] to-[#0948A8] rounded-2xl p-5 text-white shadow-lg">
         <div class="flex items-center gap-2 mb-1">
           <Building2 class="w-5 h-5" />
-          <h2 class="text-lg font-bold">心脑血管健康营 · 结营汇报</h2>
+          <h2 class="text-lg font-bold">心脑血管健康营 · 机构健康报告</h2>
         </div>
         <p class="text-xs opacity-85 mb-4">{{ report.campDays }} 天 · {{ report.totalStudents }} 名员工参营</p>
         <div class="grid grid-cols-2 gap-3 text-center">
           <div class="bg-white/15 rounded-lg py-3">
-            <div class="text-2xl font-bold">{{ fmt(report.avgWeightLoss) }}<span class="text-xs font-normal">kg</span></div>
-            <div class="text-[10px] opacity-80 mt-0.5">人均体重下降</div>
+            <div class="text-2xl font-bold">{{ fmtPct(cardioStats.bpRate) }}</div>
+            <div class="text-[10px] opacity-80 mt-0.5">血压达标率</div>
           </div>
           <div class="bg-white/15 rounded-lg py-3">
-            <div class="text-2xl font-bold">{{ fmtPct(report.avgCompletionRate) }}</div>
-            <div class="text-[10px] opacity-80 mt-0.5">平均打卡完成率</div>
+            <div class="text-2xl font-bold">{{ fmtPct(cardioStats.ldlRate) }}</div>
+            <div class="text-[10px] opacity-80 mt-0.5">LDL-C 达标率</div>
           </div>
         </div>
       </div>
 
       <!-- 本期亮点 -->
-      <Card v-if="report.highlights.length > 0">
+      <Card v-if="cardioHighlights.length > 0">
         <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
           <Sparkles class="h-4 w-4 text-[#FF976A]" />
           本期亮点
         </h3>
         <div class="space-y-2.5">
-          <div v-for="(h, i) in report.highlights" :key="i" class="flex items-start gap-2.5">
+          <div v-for="(h, i) in cardioHighlights" :key="i" class="flex items-start gap-2.5">
             <span class="w-5 h-5 rounded-full bg-[#0B5FD7]/10 text-[#0B5FD7] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{{ i + 1 }}</span>
             <p class="text-sm text-gray-700 leading-relaxed">{{ h }}</p>
           </div>
@@ -167,36 +256,51 @@ const handleExport = () => {
         </div>
       </Card>
 
-      <!-- 健康改善成果 -->
+      <!-- 心血管管理与风险 -->
       <Card>
         <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
           <HeartPulse class="h-4 w-4 text-[#0B5FD7]" />
-          健康改善成果
+          心血管管理与风险
         </h3>
         <div class="flex items-center justify-between py-2 border-b border-gray-50">
-          <span class="text-sm text-gray-500">体重下降≥3kg 人数</span>
+          <span class="text-sm text-gray-500">血压达标人数</span>
           <span class="text-sm font-bold text-gray-900">
-            {{ report.weightGoalCount }} 人
-            <span v-if="report.weightGoalRate !== null" class="text-xs text-[#0B5FD7]">（{{ fmtPct(report.weightGoalRate) }}）</span>
+            {{ cardioStats.bpControlled }}/{{ cardioStats.bpEligible }} 人
+            <span v-if="cardioStats.bpRate !== null" class="text-xs text-[#0B5FD7]">（{{ fmtPct(cardioStats.bpRate) }}）</span>
           </span>
         </div>
         <div class="flex items-center justify-between py-2 border-b border-gray-50">
-          <span class="text-sm text-gray-500">体重下降的学员</span>
-          <span class="text-sm font-bold text-gray-900">{{ report.weightLossCount }}/{{ report.weightRecordCount }} 人</span>
-        </div>
-        <div class="flex items-center justify-between py-2 border-b border-gray-50">
-          <span class="text-sm text-gray-500">体脂肪下降的学员</span>
+          <span class="text-sm text-gray-500">LDL-C 达到常用高危目标</span>
           <span class="text-sm font-bold text-gray-900">
-            {{ report.bodyFatLossCount }}/{{ report.bodyFatRecordCount }} 人
-            <span v-if="report.bodyFatRecordCount > 0" class="text-xs text-[#0B5FD7]">（{{ fmtPct(report.bodyFatLossCount / report.bodyFatRecordCount) }}）</span>
+            {{ cardioStats.ldlControlled }}/{{ cardioStats.ldlEligible }} 人
+            <span v-if="cardioStats.ldlRate !== null" class="text-xs text-[#0B5FD7]">（{{ fmtPct(cardioStats.ldlRate) }}）</span>
           </span>
         </div>
         <div class="flex items-center justify-between py-2 border-b border-gray-50">
-          <span class="text-sm text-gray-500">肌肉量增加的学员</span>
+          <span class="text-sm text-gray-500">高风险患者占比</span>
           <span class="text-sm font-bold text-gray-900">
-            {{ report.muscleGainCount }}/{{ report.muscleRecordCount }} 人
-            <span v-if="report.muscleRecordCount > 0" class="text-xs text-[#1677FF]">（{{ fmtPct(report.muscleGainCount / report.muscleRecordCount) }}）</span>
+            {{ cardioStats.highRisk }} 人
+            <span v-if="cardioStats.highRiskRate !== null" class="text-xs text-amber-600">（{{ fmtPct(cardioStats.highRiskRate) }}）</span>
           </span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-gray-50">
+          <span class="text-sm text-gray-500">运动处方签署率</span>
+          <span class="text-sm font-bold text-gray-900">
+            {{ cardioStats.rxSigned }}/{{ report.totalStudents }} 人
+            <span v-if="cardioStats.rxRate !== null" class="text-xs text-[#0B5FD7]">（{{ fmtPct(cardioStats.rxRate) }}）</span>
+          </span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-gray-50">
+          <span class="text-sm text-gray-500">团队随访覆盖率</span>
+          <span class="text-sm font-bold text-gray-900">{{ cardioStats.followupCovered }}/{{ report.totalStudents }} 人 <span v-if="cardioStats.followupRate !== null" class="text-xs text-[#0B5FD7]">（{{ fmtPct(cardioStats.followupRate) }}）</span></span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-gray-50">
+          <span class="text-sm text-gray-500">低盐饮食执行率</span>
+          <span class="text-sm font-bold text-gray-900">{{ fmtPct(cardioStats.lowSaltRate) }}</span>
+        </div>
+        <div class="flex items-center justify-between py-2">
+          <span class="text-sm text-gray-500">体重异常波动预警</span>
+          <span class="text-sm font-bold" :class="cardioStats.weightWarning > 0 ? 'text-amber-600' : 'text-gray-900'">{{ cardioStats.weightWarning }} 人</span>
         </div>
       </Card>
 

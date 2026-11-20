@@ -40,11 +40,11 @@ const { unannotatedCount, fulfillmentPendingCount } = useDietitianCounts();
 
 // ─── 营期切换（实时读 store.selectedCampId，与教练端口径一致；KeepAlive 缓存视图不再存本地快照） ───
 const selectedCampId = computed<string>({
-  get: () => store.selectedCampId || latestOrFirstId(store.camps) || '',
+  get: () => store.selectedCampId || latestOrFirstId(store.getAccessibleCamps()) || '',
   set: (v: string) => { store.selectedCampId = v; },
 });
 const showCampPicker = ref(false);
-const selectedCamp = computed(() => selectedCampId.value ? store.camps.find((c) => c.id === selectedCampId.value) : null);
+const selectedCamp = computed(() => selectedCampId.value ? store.getAccessibleCamps().find((c) => c.id === selectedCampId.value) : null);
 
 // 按营期过滤打卡记录
 const campDietRecords = computed(() => selectedCampId.value ? store.getCampDietRecords(selectedCampId.value) : store.dietRecords);

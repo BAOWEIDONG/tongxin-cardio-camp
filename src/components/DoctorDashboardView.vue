@@ -102,6 +102,10 @@ const doctorCampNames = computed(() => {
 
 function signPrescription() {
   if (!activePrescription.value) return;
+  if (!store.hasPermission('action.sign_prescription')) {
+    showToast('当前账号未开通运动处方签署权限');
+    return;
+  }
   if (!confirmRxCheck.value) {
     showToast({ message: '请先确认已核对病历、运动评估与用药情况', position: 'top' });
     return;
@@ -269,7 +273,7 @@ function saveFollowup() {
             </div>
             <MessageCircle class="h-4 w-4 text-[#0B5FD7]" />
           </button>
-          <button v-if="latestPendingPrescription" class="mt-2 flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left ring-1 ring-gray-100" @click="openPrescription(latestPendingPrescription)">
+          <button v-if="latestPendingPrescription && store.hasPermission('action.sign_prescription')" class="mt-2 flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left ring-1 ring-gray-100" @click="openPrescription(latestPendingPrescription)">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-600"><FileSignature class="h-5 w-5" /></div>
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900">{{ patientName(latestPendingPrescription.studentId) }} · 运动处方</p>
@@ -277,7 +281,7 @@ function saveFollowup() {
             </div>
             <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold text-amber-600">待签署</span>
           </button>
-          <div v-else class="mt-2 flex w-full items-center gap-3 rounded-xl bg-emerald-50/60 p-3 text-left ring-1 ring-emerald-100">
+          <div v-else-if="store.hasPermission('action.sign_prescription')" class="mt-2 flex w-full items-center gap-3 rounded-xl bg-emerald-50/60 p-3 text-left ring-1 ring-emerald-100">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-600"><CheckCircle2 class="h-5 w-5" /></div>
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900">当前营期处方均已处理</p>
@@ -442,6 +446,7 @@ function saveFollowup() {
         <div class="mt-5 flex gap-3">
           <button class="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-bold text-gray-500" @click="showPrescription = false">取消</button>
           <button
+            v-if="store.hasPermission('action.sign_prescription')"
             class="flex-[2] rounded-xl py-3 text-sm font-bold text-white transition-all active:scale-[0.99]"
             :class="confirmRxCheck ? 'bg-[#0B5FD7]' : 'bg-gray-300'"
             @click="signPrescription"
@@ -491,9 +496,10 @@ function saveFollowup() {
           <div class="mt-2 space-y-2 text-[11px]">
             <div class="flex items-center justify-between">
               <span class="text-gray-500">三甲医院确诊病历 / 检查报告</span>
-              <span :class="patientReportCount > 0 ? 'text-emerald-600' : 'text-amber-600'" class="font-bold">
+              <span v-if="store.hasPermission('action.view_reports')" :class="patientReportCount > 0 ? 'text-emerald-600' : 'text-amber-600'" class="font-bold">
                 {{ patientReportCount > 0 ? `已上传 ${patientReportCount} 份` : '待补交' }}
               </span>
+              <span v-else class="font-bold text-gray-400">无查看权限</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-gray-500">72 小时心电监测</span>
@@ -501,7 +507,7 @@ function saveFollowup() {
             </div>
             <div class="flex items-start justify-between gap-3">
               <span class="shrink-0 text-gray-500">长期用药</span>
-              <span class="text-right font-semibold text-gray-700">{{ patientMedication }}</span>
+              <span class="text-right font-semibold text-gray-700">{{ store.hasPermission('action.view_medications') ? patientMedication : '无查看权限' }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-gray-500">运动处方</span>
@@ -519,27 +525,27 @@ function saveFollowup() {
         </div>
 
         <div class="mt-4 flex gap-2">
-          <button class="flex-1 rounded-xl border border-[#0B5FD7]/20 bg-white py-3 text-xs font-bold text-[#0B5FD7]" @click="chatFromPatientDetail">团队随访</button>
+          <button v-if="store.hasPermission('action.chat')" class="flex-1 rounded-xl border border-[#0B5FD7]/20 bg-white py-3 text-xs font-bold text-[#0B5FD7]" @click="chatFromPatientDetail">团队随访</button>
           <button
-            v-if="patientDetailPendingRx"
+            v-if="patientDetailPendingRx && store.hasPermission('action.sign_prescription')"
             class="flex-[1.4] rounded-xl bg-[#0B5FD7] py-3 text-xs font-bold text-white"
             @click="prescriptionFromPatientDetail"
           >查看并签署处方</button>
-          <button v-else class="flex-[1.4] rounded-xl bg-gray-100 py-3 text-xs font-bold text-gray-400" disabled>暂无待签处方</button>
+          <button v-else-if="store.hasPermission('action.sign_prescription')" class="flex-[1.4] rounded-xl bg-gray-100 py-3 text-xs font-bold text-gray-400" disabled>暂无待签处方</button>
         </div>
       </div>
     </VanPopup>
 
     <VanTabbar v-model="tab" class="custom-tabbar">
-      <VanTabbarItem name="workbench">
+      <VanTabbarItem v-if="store.hasPermission('menu.doctor_dashboard')" name="workbench">
         <template #icon><LayoutDashboard class="h-6 w-6" /></template>
         工作台
       </VanTabbarItem>
-      <VanTabbarItem name="patients">
+      <VanTabbarItem v-if="store.hasPermission('menu.doctor_patients')" name="patients">
         <template #icon><Users class="h-6 w-6" /></template>
         患者
       </VanTabbarItem>
-      <VanTabbarItem name="followups">
+      <VanTabbarItem v-if="store.hasPermission('menu.doctor_followups')" name="followups">
         <template #icon><ClipboardList class="h-6 w-6" /></template>
         随访
       </VanTabbarItem>

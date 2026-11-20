@@ -223,6 +223,10 @@ const weightCommentingId = ref<string | null>(null);
 const weightCommentText = ref('');
 
 const startWeightComment = (record: WeightRecord) => {
+  if (!store.hasPermission('action.annotate_diet')) {
+    showToast('当前账号未开通饮食/体重批注权限');
+    return;
+  }
   // 切换编辑对象时释放上一对象锁，防残留占用
   if (weightCommentingId.value && weightCommentingId.value !== record.id) releaseLock('weight', weightCommentingId.value);
   if (!tryAcquireLock('weight', record.id)) return;
@@ -236,6 +240,10 @@ const cancelWeightComment = () => {
   weightCommentText.value = '';
 };
 const handleSaveWeightComment = (recordId: string) => {
+  if (!store.hasPermission('action.annotate_diet')) {
+    showToast('当前账号未开通饮食/体重批注权限');
+    return;
+  }
   store.addRecordComment('weight', recordId, {
     id: `cc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     role: 'dietitian',
@@ -338,6 +346,10 @@ const myDietitianComment = (rec: { comments?; dietitianComment?: string; dietiti
   recordComments(rec).find((c) => c.role === 'dietitian') || null;
 
 const startComment = (record: DietRecord) => {
+  if (!store.hasPermission('action.annotate_diet')) {
+    showToast('当前账号未开通饮食批注权限');
+    return;
+  }
   // 切换编辑对象时释放上一对象锁，防残留占用
   if (commentingId.value && commentingId.value !== record.id) releaseLock('diet', commentingId.value);
   if (!tryAcquireLock('diet', record.id)) return;
@@ -367,6 +379,10 @@ const cancelComment = () => {
 };
 
 const handleSaveComment = (recordId: string) => {
+  if (!store.hasPermission('action.annotate_diet')) {
+    showToast('当前账号未开通饮食批注权限');
+    return;
+  }
   if (!commentText.value.trim()) { showToast('请输入批注内容'); return; }
   store.addRecordComment('diet', recordId, {
     id: `cc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -445,6 +461,10 @@ const scoreBreakdown = computed(() => {
 });
 
 function handleAddManualScore() {
+  if (!store.hasPermission('action.manual_score')) {
+    showToast('当前账号未开通手动加减分权限');
+    return;
+  }
   if (!student.value || !manualReason.value.trim()) return;
   const points = manualMode.value === 'add' ? Math.abs(manualPoints.value) : -Math.abs(manualPoints.value);
   if (points === 0) return;
@@ -788,7 +808,7 @@ function handleDeleteManualScore(id: string) {
                 </div>
                 <CheckinComments :comments="recordComments(record)" />
                 <div class="flex items-center gap-2 mt-2">
-                  <button @click="startComment(record)" class="text-xs text-[#1677FF]">
+                  <button v-if="store.hasPermission('action.annotate_diet')" @click="startComment(record)" class="text-xs text-[#1677FF]">
                     编辑
                   </button>
                   <span v-if="record.dietitianComment && record.commentRead" class="flex items-center gap-1 text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
@@ -797,7 +817,7 @@ function handleDeleteManualScore(id: string) {
                   </span>
                 </div>
               </div>
-              <button v-else @click="startComment(record)" class="flex items-center gap-1 text-sm text-[#FF976A] font-medium">
+              <button v-else-if="store.hasPermission('action.annotate_diet')" @click="startComment(record)" class="flex items-center gap-1 text-sm text-[#FF976A] font-medium">
                 <MessageCircle class="w-4 h-4" />
                 添加批注 (未打分，暂不计分)
               </button>
@@ -1046,14 +1066,14 @@ function handleDeleteManualScore(id: string) {
                         </div>
                         <CheckinComments :comments="recordComments(rec)" />
                         <div class="flex items-center gap-2 mt-1">
-                          <button @click="startWeightComment(rec)" class="text-xs text-[#0B5FD7]">编辑</button>
+                          <button v-if="store.hasPermission('action.annotate_diet')" @click="startWeightComment(rec)" class="text-xs text-[#0B5FD7]">编辑</button>
                           <span v-if="rec.dietitianComment && rec.commentRead" class="flex items-center gap-1 text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                             <Eye class="w-3 h-3" />
                             学员已读未回
                           </span>
                         </div>
                       </div>
-                      <button v-else @click="startWeightComment(rec)" class="flex items-center gap-1 text-sm text-[#0B5FD7] font-medium">
+                      <button v-else-if="store.hasPermission('action.annotate_diet')" @click="startWeightComment(rec)" class="flex items-center gap-1 text-sm text-[#0B5FD7] font-medium">
                         <MessageCircle class="w-4 h-4" />
                         添加批注
                       </button>
@@ -1240,7 +1260,7 @@ function handleDeleteManualScore(id: string) {
           </Card>
 
           <!-- 手动加减分表单 -->
-          <Card>
+          <Card v-if="store.hasPermission('action.manual_score')">
             <h3 class="font-bold text-gray-900 mb-4 flex items-center gap-2 border-b pb-2">
               <Plus class="h-4 w-4 text-[#0B5FD7]" />
               手动补分 / 扣分

@@ -66,6 +66,10 @@ const myPendingPrescriptions = computed(() => {
 });
 
 const openPrescriptionForm = () => {
+  if (!store.hasPermission('action.create_prescription')) {
+    showToast('当前账号未开通新建运动处方权限');
+    return;
+  }
   prescriptionForm.value.studentId = campStudents.value[0]?.id || '';
   showPrescription.value = true;
 };
@@ -242,7 +246,7 @@ const selectCamp = (campId: string | null) => {
               当前营期待医师签署 {{ myPendingPrescriptions.length }} 份 · 签署后自动同步学员
             </div>
           </div>
-          <button class="text-[11px] font-bold text-white bg-[#0B5FD7] px-3 py-1.5 rounded-full shrink-0 active:scale-95" @click="openPrescriptionForm">
+          <button v-if="store.hasPermission('action.create_prescription')" class="text-[11px] font-bold text-white bg-[#0B5FD7] px-3 py-1.5 rounded-full shrink-0 active:scale-95" @click="openPrescriptionForm">
             新建处方
           </button>
         </div>
@@ -379,11 +383,11 @@ const selectCamp = (campId: string | null) => {
         <template #icon><Users class="h-6 w-6" /></template>
         首页
       </VanTabbarItem>
-      <VanTabbarItem @click="store.setCurrentView('coach-unannotated-list')" :badge="coachUnannotatedCount > 0 ? coachUnannotatedCount : undefined">
+      <VanTabbarItem v-if="store.hasPermission('menu.coach_annotations')" @click="store.setCurrentView('coach-unannotated-list')" :badge="coachUnannotatedCount > 0 ? coachUnannotatedCount : undefined">
         <template #icon><FileText class="h-6 w-6" /></template>
         批注
       </VanTabbarItem>
-      <VanTabbarItem @click="store.setCurrentView('activity-upload')">
+      <VanTabbarItem v-if="store.hasPermission('menu.coach_activities')" @click="store.setCurrentView('activity-upload')">
         <template #icon><Dumbbell class="h-6 w-6" /></template>
         发布活动
       </VanTabbarItem>

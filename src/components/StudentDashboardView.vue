@@ -759,7 +759,7 @@ onActivated(() => {
                 {{ activePrescription?.status === 'signed' ? '运动处方已签署' : '运动处方待医师签署' }} · 团队消息实时留痕
               </div>
             </div>
-            <button class="text-[10px] font-bold text-[#0B5FD7] bg-white px-2.5 py-1.5 rounded-full shrink-0 active:scale-95" @click="openTeamFollowup">
+            <button v-if="store.hasPermission('action.chat')" class="text-[10px] font-bold text-[#0B5FD7] bg-white px-2.5 py-1.5 rounded-full shrink-0 active:scale-95" @click="openTeamFollowup">
               在线随访
             </button>
           </div>
@@ -805,7 +805,7 @@ onActivated(() => {
             <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
             <p class="text-[10px] leading-relaxed text-red-600">{{ activePrescription.stopSigns }}</p>
           </div>
-          <button class="mt-3 w-full rounded-xl border border-[#0B5FD7]/20 bg-white py-2 text-[11px] font-bold text-[#0B5FD7] active:bg-blue-50" @click="store.setCurrentView('exercise')">
+          <button v-if="store.hasPermission('menu.exercise')" class="mt-3 w-full rounded-xl border border-[#0B5FD7]/20 bg-white py-2 text-[11px] font-bold text-[#0B5FD7] active:bg-blue-50" @click="store.setCurrentView('exercise')">
             查看运动记录与安全提示
           </button>
         </template>
@@ -821,7 +821,7 @@ onActivated(() => {
           每日打卡任务
         </h3>
         <div class="grid grid-cols-3 gap-3">
-          <Card :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#0B5FD7] active:scale-[0.96]', visibleCards.includes(3) ? 'card-enter-active' : '']" @click="guardCheckin('exercise')">
+          <Card v-if="store.hasPermission('menu.exercise')" :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#0B5FD7] active:scale-[0.96]', visibleCards.includes(3) ? 'card-enter-active' : '']" @click="guardCheckin('exercise')">
             <div class="absolute -top-6 -right-4 w-24 h-24 bg-gradient-to-br from-[#0B5FD7]/12 to-blue-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10 flex flex-col items-center">
               <div :class="['w-12 h-12 rounded-full flex items-center justify-center mb-3 shadow-sm', campNotStarted ? 'bg-gray-200 text-gray-400' : todayExerciseDone ? 'bg-[#0B5FD7]/15 text-[#0B5FD7]' : 'bg-gradient-to-br from-[#0B5FD7] to-[#0A54C0] text-white animate-pulse hover:scale-110']">
@@ -832,7 +832,7 @@ onActivated(() => {
             </div>
           </Card>
 
-          <Card :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#FF976A] active:scale-[0.96]', visibleCards.includes(4) ? 'card-enter-active' : '']" @click="guardCheckin('diet')">
+          <Card v-if="store.hasPermission('menu.diet')" :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#FF976A] active:scale-[0.96]', visibleCards.includes(4) ? 'card-enter-active' : '']" @click="guardCheckin('diet')">
             <div class="absolute -top-6 -right-4 w-24 h-24 bg-gradient-to-br from-[#FF976A]/12 to-orange-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10 flex flex-col items-center">
               <div :class="['w-12 h-12 rounded-full flex items-center justify-center mb-3 shadow-sm', campNotStarted ? 'bg-gray-200 text-gray-400' : todayDietDone ? 'bg-[#FF976A]/15 text-[#FF976A]' : 'bg-gradient-to-br from-[#FF976A] to-orange-400 text-white animate-pulse hover:scale-110']">
@@ -843,7 +843,7 @@ onActivated(() => {
             </div>
           </Card>
 
-          <Card :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#1677FF] active:scale-[0.96]', visibleCards.includes(5) ? 'card-enter-active' : '']" @click="guardCheckin('weight-checkin')">
+          <Card v-if="store.hasPermission('menu.weight')" :class="['flex flex-col items-center justify-center py-6 border-0 shadow-sm card-enter relative overflow-hidden transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:ring-2 ring-[#1677FF] active:scale-[0.96]', visibleCards.includes(5) ? 'card-enter-active' : '']" @click="guardCheckin('weight-checkin')">
             <div class="absolute -top-6 -right-4 w-24 h-24 bg-gradient-to-br from-[#1677FF]/12 to-blue-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10 flex flex-col items-center">
               <div :class="['w-12 h-12 rounded-full flex items-center justify-center mb-3 shadow-sm', campNotStarted ? 'bg-gray-200 text-gray-400' : todayWeightDone ? 'bg-[#1677FF]/15 text-[#1677FF]' : 'bg-gradient-to-br from-[#1677FF] to-blue-500 text-white animate-pulse hover:scale-110']">
@@ -864,7 +864,7 @@ onActivated(() => {
         </h3>
 
         <!-- 个人历程：整行长卡，卡面直接预览关键数据 -->
-        <Card class="mb-3 p-4 cursor-pointer active:scale-[0.99] transition-transform border-0 shadow-sm bg-gradient-to-br from-[#0B5FD7]/8 via-white to-white relative overflow-hidden" @click="store.setCurrentView('personal-journey')">
+        <Card v-if="store.hasPermission('menu.personal_journey')" class="mb-3 p-4 cursor-pointer active:scale-[0.99] transition-transform border-0 shadow-sm bg-gradient-to-br from-[#0B5FD7]/8 via-white to-white relative overflow-hidden" @click="store.setCurrentView('personal-journey')">
           <div class="absolute -top-10 -right-8 w-36 h-36 bg-gradient-to-br from-[#0B5FD7]/12 to-blue-50 rounded-full blur-2xl pointer-events-none"></div>
           <div class="relative z-10">
             <div class="flex items-center gap-2.5">
@@ -917,7 +917,7 @@ onActivated(() => {
         </Card>
 
         <div class="grid grid-cols-2 gap-3">
-          <Card class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('calendar')">
+          <Card v-if="store.hasPermission('menu.calendar')" class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('calendar')">
             <div class="absolute -top-8 -right-6 w-32 h-32 bg-gradient-to-br from-orange-100/50 to-orange-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10">
               <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center text-orange-500 mb-2 shadow-sm">
@@ -930,7 +930,7 @@ onActivated(() => {
             </div>
           </Card>
 
-          <Card class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('activities-list')">
+          <Card v-if="store.hasPermission('menu.activity_hub')" class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('activities-list')">
             <div class="absolute -top-8 -right-6 w-32 h-32 bg-gradient-to-br from-blue-100/50 to-blue-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10">
               <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-500 mb-2 shadow-sm">
@@ -943,7 +943,7 @@ onActivated(() => {
             </div>
           </Card>
 
-          <Card class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('my-rewards')">
+          <Card v-if="store.hasPermission('menu.my_rewards')" class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('my-rewards')">
             <div class="absolute -top-8 -right-6 w-32 h-32 bg-gradient-to-br from-red-100/50 to-orange-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10">
               <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-100 to-orange-50 flex items-center justify-center text-[#FF6B35] mb-2 shadow-sm">
@@ -956,7 +956,7 @@ onActivated(() => {
             </div>
           </Card>
 
-          <Card class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('badge-center')">
+          <Card v-if="store.hasPermission('menu.badge_center')" class="p-5 cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm flex flex-col justify-between h-32 bg-white relative overflow-hidden" @click="store.setCurrentView('badge-center')">
             <div class="absolute -top-8 -right-6 w-32 h-32 bg-gradient-to-br from-yellow-100/60 to-orange-50 rounded-full blur-2xl pointer-events-none"></div>
             <div class="relative z-10">
               <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-100 to-orange-50 flex items-center justify-center text-amber-500 mb-2 shadow-sm">

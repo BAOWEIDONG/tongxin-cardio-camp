@@ -18,22 +18,13 @@ const isPlatformAdmin = computed(() => store.user?.adminLevel === 'platform' || 
 const myAccount = computed(() =>
   store.accounts.find((a) => a.id === store.user?.id || a.phone === store.user?.phone),
 );
-const scopedCampIds = computed(() => {
-  if (isPlatformAdmin.value) return store.camps.map((c) => c.id);
-  return myAccount.value?.campIds || [];
-});
 const visibleCamps = computed(() => {
   if (isPlatformAdmin.value) return store.camps;
-  return store.camps.filter((c) => scopedCampIds.value.includes(c.id));
+  return store.getAccessibleCamps();
 });
 const scopedAccounts = computed(() => {
   if (isPlatformAdmin.value) return store.accounts;
-  const org = store.user?.organization;
-  return store.accounts.filter((a) => {
-    if (a.id === store.user?.id) return true;
-    if (a.campIds?.length) return a.campIds.some((id) => scopedCampIds.value.includes(id));
-    return !!org && a.organization === org;
-  });
+  return store.getOrganizationAccounts();
 });
 const permissionLabel = computed(() => {
   if (store.user?.adminLevel === 'platform' || store.user?.supervisor) return '一级管理 · 国际医院平台';
@@ -111,7 +102,15 @@ const campNameMap = computed(() => {
 const handleEditCamp = (camp?: Camp) => {
   editingCamp.value = camp
     ? { ...camp }
-    : { name: '', startDate: '', endDate: '', status: 'upcoming' };
+    : {
+        name: '',
+        startDate: '',
+        endDate: '',
+        status: 'upcoming',
+        organization: isPlatformAdmin.value
+          ? (store.getCurrentOrganization() || store.getAccessibleHospitals()[0]?.id)
+          : store.getCurrentOrganization(),
+      };
   campFormError.value = '';
   showCampModal.value = true;
 };
@@ -171,6 +170,7 @@ const saveCamp = () => {
       startDate: editingCamp.value.startDate || undefined,
       endDate: editingCamp.value.endDate || undefined,
       status,
+      organization: editingCamp.value.organization,
     });
   } else {
     const newCampId = `camp_${Date.now()}`;
@@ -180,6 +180,9 @@ const saveCamp = () => {
       startDate: editingCamp.value.startDate || undefined,
       endDate: editingCamp.value.endDate || undefined,
       status,
+      organization: isPlatformAdmin.value
+        ? (editingCamp.value.organization || store.getCurrentOrganization() || store.camps[0]?.organization)
+        : store.getCurrentOrganization(),
     });
     // 二级机构新开的营期自动归入本机构管理员负责范围，避免创建后不可见
     if (!isPlatformAdmin.value && myAccount.value) {
@@ -199,6 +202,7 @@ const handleEditAccount = (account?: Account) => {
         phone: '',
         name: '',
         role: activeTab.value,
+        organization: store.getCurrentOrganization() || store.getAccessibleHospitals()[0]?.id || '',
         campIds: (activeTab.value === 'student' || activeTab.value === 'coach' || activeTab.value === 'doctor') ? [] : undefined,
         active: true,
         supervisor: false,
@@ -280,6 +284,7 @@ const saveAccount = () => {
       phone: phone.trim(),
       name: name?.trim() || '',
       role,
+      organization: isPlatformAdmin.value ? editingAccount.value.organization : store.getCurrentOrganization(),
       campIds: (role === 'student' || role === 'coach' || role === 'doctor') ? campIds : undefined,
       active,
       ...(canGrant ? { supervisor: supervisorFlag } : {}),
@@ -290,7 +295,9 @@ const saveAccount = () => {
       phone: phone.trim(),
       name: name?.trim() || '',
       role: role as Role,
-      organization: store.user?.organization,
+      organization: editingAccount.value.organization
+        || store.getCurrentOrganization()
+        || store.getAccessibleHospitals()[0]?.id,
       campIds: (role === 'student' || role === 'coach' || role === 'doctor') ? campIds : undefined,
       active: active ?? true,
       supervisor: canGrant ? supervisorFlag : false,
@@ -347,8 +354,9 @@ const switchTab = (role: Role) => {
       </div>
       <div class="flex items-start gap-2 bg-white border border-gray-100 rounded-xl p-3">
         <Settings2 class="w-4 h-4 text-[#FF976A] shrink-0 mt-0.5" />
-        <div class="text-[11px] text-gray-500 leading-relaxed">
+        <div class="flex-1 text-[11px] text-gray-500 leading-relaxed">
           分级管理：商城兑换、活动开关等平台规则由国际医院统一配置；医院/机构仅可配置本机构人员账号与开营批次。
+          <button class="ml-1 font-bold text-[#0B5FD7]" @click="store.setCurrentView('permission-config')">配置团队权限 →</button>
         </div>
       </div>
       <div v-if="!isPlatformAdmin" class="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -558,6 +566,15 @@ const switchTab = (role: Role) => {
               @input="campFormError = ''"
             />
           </div>
+          <div v-if="isPlatformAdmin">
+            <label class="text-sm font-medium text-gray-700 block mb-1">所属医院 <span class="text-red-500">*</span></label>
+            <select
+              v-model="editingCamp.organization"
+              class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#FF976A] text-sm"
+            >
+              <option v-for="h in store.getAccessibleHospitals()" :key="h.id" :value="h.id">{{ h.name }}</option>
+            </select>
+          </div>
           <div>
             <label class="text-sm font-medium text-gray-700 block mb-1">开营日期</label>
             <input
@@ -616,6 +633,21 @@ const switchTab = (role: Role) => {
               v-model="editingAccount.name"
               @input="accountFormError = ''"
             />
+          </div>
+          <!-- 所属医院：团队权限跟随医院，不允许跨院归属 -->
+          <div>
+            <label class="text-sm font-medium text-gray-700 block mb-1">所属医院</label>
+            <select
+              v-if="isPlatformAdmin"
+              v-model="editingAccount.organization"
+              class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#FF976A] text-sm"
+            >
+              <option v-for="h in store.getAccessibleHospitals()" :key="h.id" :value="h.id">{{ h.name }}</option>
+            </select>
+            <div v-else class="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-[#0B5FD7]">
+              {{ store.getCurrentOrganization() }}（二级账号固定本院）
+            </div>
+            <div class="mt-1 text-[10px] text-gray-400">团队权限跟随医院，不能跨院查看数据</div>
           </div>
           <!-- 角色选择（新增时可切换） -->
           <div>

@@ -215,13 +215,13 @@ const exportPDF = () => {
         <div class="flex items-center justify-between mb-2 border-b pb-2">
           <h3 class="font-bold text-gray-900 flex items-center gap-2">
             <TrendingDown class="h-4 w-4 text-[#0B5FD7]" />
-            体重趋势
+            体液潴留与体重参考
           </h3>
           <ChartRulePopup title="体重趋势计算规则">
-            <p>记录每次体重打卡的体重值，按时间顺序连成折线。</p>
+            <p>心血管人群不以减重作为主要疗效指标；体重趋势用于观察水肿、心衰和体液潴留风险。</p>
             <p><span class="font-bold text-gray-900">初始体重：</span>首条体重记录的值。</p>
             <p><span class="font-bold text-gray-900">最新体重：</span>最近一条体重记录的值。</p>
-            <p><span class="font-bold text-gray-900">变化量：</span>最新体重 - 初始体重，负值表示体重下降（绿色），正值表示上升（橙色）。</p>
+            <p><span class="font-bold text-gray-900">变化量：</span>最新体重 - 初始体重。若 1 周内增加 ≥2kg，或伴脚踝水肿、夜间憋醒、气短，请尽快联系团队。</p>
             <p><span class="font-bold text-gray-900">变化百分比：</span>变化量 ÷ 初始体重 × 100%。</p>
           </ChartRulePopup>
         </div>
@@ -270,7 +270,7 @@ const exportPDF = () => {
             <!-- 最低点标签 -->
             <div v-if="weightMilestones" class="flex items-center gap-1 mt-1 text-[9px] font-bold text-[#0B5FD7]">
               <span class="inline-block w-2 h-2 rounded-full border border-[#0B5FD7]"></span>
-              历史最低 {{ weightMilestones.lowestWeight.toFixed(1) }} kg
+              历史最低 {{ weightMilestones.lowestWeight.toFixed(1) }} kg（仅作参考）
             </div>
             <!-- 滑动提示 -->
             <div v-if="chartWidth > CHART_MIN_WIDTH" class="text-center text-[9px] text-gray-300 mt-1">← 左右滑动查看更多 →</div>

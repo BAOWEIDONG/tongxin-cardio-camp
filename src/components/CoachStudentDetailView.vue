@@ -119,6 +119,10 @@ onBeforeUnmount(releaseAllLocks);
 onDeactivated(releaseAllLocks);
 
 const startExerciseComment = (record: ExerciseRecord) => {
+  if (!store.hasPermission('action.annotate_exercise')) {
+    showToast('当前账号未开通运动批注权限');
+    return;
+  }
   // 切换编辑对象时释放上一对象锁，防残留占用
   if (exerciseCommentingId.value && exerciseCommentingId.value !== record.id) releaseLock('exercise', exerciseCommentingId.value);
   if (!tryAcquireLock('exercise', record.id)) return;
@@ -134,6 +138,10 @@ const cancelExerciseComment = () => {
   exerciseScore.value = null;
 };
 const handleSaveExerciseComment = (recordId: string) => {
+  if (!store.hasPermission('action.annotate_exercise')) {
+    showToast('当前账号未开通运动批注权限');
+    return;
+  }
   if (!exerciseCommentText.value.trim()) { showToast('请输入批注内容'); return; }
   store.addRecordComment('exercise', recordId, {
     id: `cc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -462,10 +470,10 @@ onActivated(consumePendingAnnotation);
                   </div>
                   <CheckinComments :comments="recordComments(record)" />
                   <div class="flex items-center gap-2 mt-1">
-                    <button @click="startExerciseComment(record)" class="text-xs text-[#0B5FD7]">编辑</button>
+                    <button v-if="store.hasPermission('action.annotate_exercise')" @click="startExerciseComment(record)" class="text-xs text-[#0B5FD7]">编辑</button>
                   </div>
                 </div>
-                <button v-else @click="startExerciseComment(record)" class="flex items-center gap-1 text-sm text-[#0B5FD7] font-medium">
+                <button v-else-if="store.hasPermission('action.annotate_exercise')" @click="startExerciseComment(record)" class="flex items-center gap-1 text-sm text-[#0B5FD7] font-medium">
                   <MessageCircle class="w-4 h-4" />
                   添加批注
                 </button>

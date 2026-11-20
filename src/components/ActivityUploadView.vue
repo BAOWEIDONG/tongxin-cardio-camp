@@ -16,8 +16,9 @@ const store = useAppStore();
   const coachCamps = computed(() => {
     const coachAccount = store.accounts.find(a => a.id === store.user?.id || a.phone === store.user?.phone);
     const ids = coachAccount?.campIds;
-    if (!ids || ids.length === 0) return store.camps.filter(c => c.status === 'active');
-    return store.camps.filter(c => ids.includes(c.id));
+    const accessible = store.getAccessibleCamps();
+    if (!ids || ids.length === 0) return accessible.filter(c => c.status === 'active');
+    return accessible.filter(c => ids.includes(c.id));
   });
   const camps = coachCamps;
 const selectedCampIds = ref<string[]>([]);  // 空数组 = 全部营期

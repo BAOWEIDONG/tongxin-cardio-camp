@@ -7,7 +7,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Search, X, Users, CheckCircle2
 
 const store = useAppStore();
 
-const selectedCamp = computed(() => store.camps.find((c) => c.id === store.selectedCampId) || null);
+const selectedCamp = computed(() => store.getAccessibleCamps().find((c) => c.id === store.selectedCampId) || null);
 const campStudents = computed(() => (store.selectedCampId ? store.getStudentsByCamp(store.selectedCampId) : store.getAllStudents()));
 
 // 默认昨天；顶部可一键切换「昨天 / 今天」，也可在营期范围内前后翻天

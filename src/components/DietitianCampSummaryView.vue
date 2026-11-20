@@ -5,7 +5,7 @@ import { useDietitianCounts } from '../lib/dietitianCounts';
 import { campDaysOf, elapsedCampDays } from '../lib/camps';
 import { useDeferred } from '../composables/useDeferred';
 import { NavBar, Card, ChartRulePopup } from './ui';
-import { BarChart3, TrendingDown, Users, Activity, ChevronRight, Download, UserCheck, Building2, FileText, Settings, Flame } from 'lucide-vue-next';
+import { BarChart3, Users, Activity, ChevronRight, Download, HeartPulse, Building2, FileText, Settings, Flame } from 'lucide-vue-next';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from 'vant';
 import { metricValuesFor } from '../mock/data';
 import { generateDietitianSummary } from '../lib/campReport';
@@ -17,7 +17,7 @@ const store = useAppStore();
 const { unannotatedCount, fulfillmentPendingCount } = useDietitianCounts();
 
 // ─── 营期：仅展示当前营期，由首页全局营期控制（无本地切换） ───
-const selectedCamp = computed(() => store.selectedCampId ? store.camps.find((c) => c.id === store.selectedCampId) : null);
+const selectedCamp = computed(() => store.selectedCampId ? store.getAccessibleCamps().find((c) => c.id === store.selectedCampId) : null);
 // 进行中营期按开营到今天计算，与学员端报告口径一致
 const campDays = computed(() => selectedCamp.value ? elapsedCampDays(selectedCamp.value) : campDaysOf(selectedCamp.value));
 
@@ -49,11 +49,34 @@ const { data: summary, done: summaryReady } = useDeferred<DietitianCampSummary>(
   ),
 );
 
-// 减重总人数及占比（分母=本营期参营学员总数：体重下降人数 / 参营学员总数）
-const weightLossStats = computed(() => {
-  if (!summary.value) return { count: 0, total: 0 };
-  const count = summary.value.studentReports.filter((r) => (r.weightTrend.totalChange ?? 0) < 0).length;
-  return { count, total: summary.value.totalStudents };
+const cardioSummary = computed(() => {
+  if (!summary.value) return { bpEligible: 0, bpControlled: 0, bpRate: null as number | null, ldlEligible: 0, ldlControlled: 0, ldlRate: null as number | null, highRisk: 0 };
+  let bpEligible = 0; let bpControlled = 0; let ldlEligible = 0; let ldlControlled = 0; let highRisk = 0;
+  summary.value.studentReports.forEach((r) => {
+    const valueOf = (id: string) => {
+      const m = r.metricChanges.find((x) => x.configId === id);
+      const v = m?.afterValue ?? m?.beforeValue;
+      return typeof v === 'number' ? v : null;
+    };
+    const sbp = valueOf('mc_cv_sbp');
+    const dbp = valueOf('mc_cv_dbp');
+    const ldl = valueOf('mc_bl_ldl');
+    if (sbp !== null && dbp !== null) {
+      bpEligible++;
+      if (sbp < 130 && dbp < 80) bpControlled++;
+      if (sbp >= 160 || dbp >= 100) highRisk++;
+    }
+    if (ldl !== null) {
+      ldlEligible++;
+      if (ldl < 2.6) ldlControlled++;
+      if (ldl >= 4.1) highRisk++;
+    }
+  });
+  return {
+    bpEligible, bpControlled, bpRate: bpEligible ? bpControlled / bpEligible : null,
+    ldlEligible, ldlControlled, ldlRate: ldlEligible ? ldlControlled / ldlEligible : null,
+    highRisk,
+  };
 });
 
 // 按分类分组的指标聚合（summary 未就绪时为空）
@@ -100,6 +123,22 @@ const fmtChange = (v: number | null, unit = ''): string => {
   return `${sign}${v.toFixed(1)}${unit ? ' ' + unit : ''}`;
 };
 
+const studentCardio = (r: { metricChanges: { configId: string; afterValue: unknown; beforeValue: unknown }[] }) => {
+  const valueOf = (id: string) => {
+    const m = r.metricChanges.find((x) => x.configId === id);
+    const v = m?.afterValue ?? m?.beforeValue;
+    return typeof v === 'number' ? v : null;
+  };
+  const sbp = valueOf('mc_cv_sbp');
+  const dbp = valueOf('mc_cv_dbp');
+  const ldl = valueOf('mc_bl_ldl');
+  return {
+    bp: sbp !== null && dbp !== null ? `${sbp}/${dbp}` : '--',
+    ldl: ldl !== null ? ldl.toFixed(2) : '--',
+    warning: (sbp !== null && sbp >= 160) || (dbp !== null && dbp >= 100) || (ldl !== null && ldl >= 4.1),
+  };
+};
+
 // 打卡频率（打卡完成率·有打卡就算）= 任意打卡天数 totalCheckinDays / 营期天数
 const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: number } }): number =>
   r.checkinStats.campDays > 0 ? r.checkinStats.totalCheckinDays / r.checkinStats.campDays : 0;
@@ -109,7 +148,7 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
   <div class="flex min-h-full flex-col bg-[#F7F8FA] pb-24 font-sans">
     <NavBar title="结营统计" :on-back="store.goBack">
       <template #right>
-        <button class="text-[#FF976A] hover:bg-orange-50 p-2 rounded-full transition-colors" @click="exportPDF">
+        <button v-if="store.hasPermission('action.export_report')" class="text-[#FF976A] hover:bg-orange-50 p-2 rounded-full transition-colors" @click="exportPDF">
           <Download class="h-5 w-5" />
         </button>
       </template>
@@ -163,17 +202,17 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
         </Card>
         <Card class="p-4 text-center">
           <div class="flex items-center justify-center mb-2">
-            <UserCheck class="w-5 h-5 text-[#0B5FD7] mr-1" />
+            <HeartPulse class="w-5 h-5 text-[#0B5FD7] mr-1" />
           </div>
-          <div class="text-2xl font-bold text-[#0B5FD7]">{{ summary.validStudentCount }}</div>
-          <div class="text-xs text-gray-500 mt-1">有效人数<span class="text-[10px] text-gray-400">（有前后体成分数据）</span></div>
+          <div class="text-2xl font-bold text-[#0B5FD7]">{{ fmtPct(cardioSummary.bpRate) }}</div>
+          <div class="text-xs text-gray-500 mt-1">血压达标率<span class="text-[10px] text-gray-400">（&lt;130/80）</span></div>
         </Card>
         <Card class="p-4 text-center">
           <div class="flex items-center justify-center mb-2">
-            <TrendingDown class="w-5 h-5 text-[#0B5FD7] mr-1" />
+            <HeartPulse class="w-5 h-5 text-[#0B5FD7] mr-1" />
           </div>
-          <div class="text-2xl font-bold text-[#0B5FD7]">{{ fmtChange(summary.avgWeightChange, 'kg') }}</div>
-          <div class="text-xs text-gray-500 mt-1">平均体重变化<span class="text-[10px] text-gray-400">（按有体重记录）</span></div>
+          <div class="text-2xl font-bold text-[#0B5FD7]">{{ fmtPct(cardioSummary.ldlRate) }}</div>
+          <div class="text-xs text-gray-500 mt-1">LDL-C 达标率<span class="text-[10px] text-gray-400">（常用高危目标）</span></div>
         </Card>
         <Card class="p-4 text-center">
           <div class="flex items-center justify-center mb-2">
@@ -191,10 +230,10 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
         </Card>
         <Card class="p-4 text-center">
           <div class="flex items-center justify-center mb-2">
-            <Flame class="w-5 h-5 text-[#FF976A] mr-1" />
+            <Flame class="w-5 h-5 text-red-500 mr-1" />
           </div>
-          <div class="text-2xl font-bold text-[#FF976A]">{{ weightLossStats.count }}<span class="text-sm font-normal text-gray-400">/{{ weightLossStats.total }}</span></div>
-          <div class="text-xs text-gray-500 mt-1">体重下降人数<span class="text-[10px] text-gray-400">（{{ fmtPct(weightLossStats.total ? weightLossStats.count / weightLossStats.total : 0) }}占参营）</span></div>
+          <div class="text-2xl font-bold text-red-500">{{ cardioSummary.highRisk }}</div>
+          <div class="text-xs text-gray-500 mt-1">高风险患者<span class="text-[10px] text-gray-400">（血压或 LDL-C 超标）</span></div>
         </Card>
       </div>
 
@@ -206,8 +245,9 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
             学员结营概况
           </h3>
           <ChartRulePopup title="学员结营概况计算规则" button-text="规则说明">
-            <p><span class="font-bold text-gray-900">有效：</span>该学员有营前+营后体测数据（身体测量数据分类至少一项指标同时有前后数值），可作前后对比；仅有体重记录而无前后体测数据不标该标签。</p>
-            <p><span class="font-bold text-gray-900">体重变化：</span>营期末体重 − 营期初体重（负值=减重），按有体重记录的学员统计。</p>
+            <p><span class="font-bold text-gray-900">有效：</span>该学员本营期有可对比的心血管或体测指标，用于风险随访，不以是否减重判断有效。</p>
+            <p><span class="font-bold text-gray-900">血压达标：</span>最近一次收缩压 &lt;130 且舒张压 &lt;80 mmHg，按一般管理目标统计；最终目标由医师个体化确定。</p>
+            <p><span class="font-bold text-gray-900">LDL-C 达标：</span>最近一次 LDL-C &lt;2.6 mmol/L，按常用高危目标统计；极高危患者目标为 &lt;1.8 mmol/L。</p>
             <p><span class="font-bold text-gray-900">打卡率：</span>有打卡记录的天数 / 营期天数（当天有饮食/运动/体重任一项即算打卡一天，含部分打卡）。</p>
             <p><span class="font-bold text-gray-900">打卡全部完成率：</span>每天完成全部打卡（早+午+晚餐、运动、体重五项全齐）的天数 / 营期天数。</p>
             <p><span class="font-bold text-gray-900">进度条颜色：</span>统一绿色，条长表示打卡率（越长打卡越勤）。</p>
@@ -222,7 +262,7 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
             class="p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors"
             @click="openStudent(report.studentId)"
           >
-            <!-- 头部：姓名 / 性别 / 有效 + 体重变化 + 箭头 -->
+            <!-- 头部：姓名 / 性别 / 有效 + 血压与 LDL-C + 箭头 -->
             <div class="flex items-center gap-2">
               <span class="font-bold text-gray-900 text-sm truncate">{{ report.studentName }}</span>
               <span class="text-[10px] text-gray-500 shrink-0">{{ report.gender === 'male' ? '男' : '女' }}</span>
@@ -230,9 +270,11 @@ const freqRate = (r: { checkinStats: { totalCheckinDays: number; campDays: numbe
                 v-if="report.metricChanges.filter(m => m.category === '身体测量数据' && typeof m.beforeValue === 'number' && typeof m.afterValue === 'number').length > 0"
                 class="text-[9px] bg-[#0B5FD7]/10 text-[#0B5FD7] px-1.5 py-0.5 rounded font-medium shrink-0"
               >有效</span>
-              <span class="flex items-center gap-0.5 text-[10px] text-gray-500 ml-auto shrink-0">
-                <TrendingDown class="w-3 h-3" :class="report.summary.weightLossKg !== null && report.summary.weightLossKg > 0 ? 'text-[#0B5FD7]' : 'text-gray-400'" />
-                体重变化 <span class="text-gray-700 font-medium">{{ report.summary.weightLossKg !== null ? `${fmt(report.summary.weightLossKg)}kg` : '--' }}</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500 ml-auto shrink-0">
+                <HeartPulse class="w-3 h-3" :class="studentCardio(report).warning ? 'text-red-500' : 'text-[#0B5FD7]'" />
+                血压 <span class="text-gray-700 font-medium">{{ studentCardio(report).bp }}</span>
+                <span class="text-gray-300">·</span>
+                LDL <span class="text-gray-700 font-medium">{{ studentCardio(report).ldl }}</span>
               </span>
               <ChevronRight class="w-4 h-4 text-gray-300 shrink-0" />
             </div>

@@ -13,7 +13,7 @@ const store = useAppStore();
 // ─── 营期切换器（多期时显示） ──────────────────────────────
 const availableCamps = computed(() => {
   if (store.user?.role === 'student') return store.getStudentCamps(store.user.id);
-  return store.camps;
+  return store.getAccessibleCamps();
 });
 
 const activeCampId = computed(() => {

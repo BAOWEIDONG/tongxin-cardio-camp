@@ -11,8 +11,8 @@ const store = useAppStore();
 const { unannotatedCount } = useCoachCounts();
 
 // 营期统一由首页主控切换，这里只读展示当前营期
-const currentCampId = computed(() => store.selectedCampId || latestOrFirstId(store.camps) || '');
-const currentCamp = computed(() => store.camps.find((c) => c.id === currentCampId.value));
+const currentCampId = computed(() => store.selectedCampId || latestOrFirstId(store.getAccessibleCamps()) || '');
+const currentCamp = computed(() => store.getAccessibleCamps().find((c) => c.id === currentCampId.value));
 
 // 学员信息映射（姓名 + 手机号）
 const studentInfoMap = computed(() => {

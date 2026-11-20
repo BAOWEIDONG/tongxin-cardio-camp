@@ -814,45 +814,51 @@ Object.values(MOCK_STUDENT_WEIGHTS).forEach((records) => {
 
 /** 营期/期列表 */
 export const MOCK_CAMPS: Camp[] = [
-  { id: 'camp1', name: '第一期', startDate: dateStr(-15), endDate: dateStr(13), status: 'active' },
-  { id: 'camp2', name: '第二期', startDate: dateStr(-2), endDate: dateStr(26), status: 'active' },
-  { id: 'camp3', name: '第三期', startDate: dateStr(7), endDate: dateStr(35), status: 'upcoming' },
+  { id: 'camp1', name: '第一期', startDate: dateStr(-15), endDate: dateStr(13), status: 'active', organization: '北大医疗康复医院' },
+  { id: 'camp2', name: '第二期', startDate: dateStr(-2), endDate: dateStr(26), status: 'active', organization: '北大医疗康复医院' },
+  { id: 'camp3', name: '第三期', startDate: dateStr(7), endDate: dateStr(35), status: 'upcoming', organization: '北大国际医院' },
 ];
 
 /** 账户列表（手机号 = 登录凭证） */
 export const MOCK_ACCOUNTS: Account[] = [
   // 医师（心脑血管营新增角色）
-  { id: 'dr1', phone: '13600000001', name: '周明远', role: 'doctor', organization: '北大国际医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'dr2', phone: '13600000002', name: '林静', role: 'doctor', organization: '北大国际医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'dr1', phone: '13600000001', name: '周明远', role: 'doctor', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'dr2', phone: '13600000002', name: '林静', role: 'doctor', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'dr3', phone: '13600000003', name: '许文博', role: 'doctor', organization: '北大国际医院', campIds: ['camp3'], active: true, createdAt: iso(-5, '09:00:00') },
   // 营养师（第一批数据库预维护，后续可在营养师端管理）
-  { id: 'd0', phone: '18888888888', name: '管理员', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'd1', phone: '13900000001', name: '王营养师', role: 'dietitian', organization: '北大医疗康复医院', adminLevel: 'org', campIds: ['camp1'], active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'd2', phone: '13900000002', name: '李营养师', role: 'dietitian', organization: '北大医疗康复医院', adminLevel: 'org', campIds: ['camp2'], active: true, createdAt: iso(-20, '09:00:00') },
+  { id: 'd0', phone: '18888888888', name: '集团管理员', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2', 'camp3'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'd1', phone: '13900000001', name: '王营养师', role: 'dietitian', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'd2', phone: '13900000002', name: '李营养师', role: 'dietitian', organization: '北大医疗康复医院', campIds: ['camp2'], active: true, createdAt: iso(-20, '09:00:00') },
+  { id: 'd3', phone: '13900000003', name: '赵营养师', role: 'dietitian', organization: '北大国际医院', campIds: ['camp3'], active: true, createdAt: iso(-5, '09:00:00') },
+  // 医院/机构二级管理员：仅管理本院数据，可配置本院团队权限
+  { id: 'adm_rehab', phone: '13500000001', name: '康复医院管理员', role: 'dietitian', organization: '北大医疗康复医院', adminLevel: 'org', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '08:30:00') },
+  { id: 'adm_zibo', phone: '13500000002', name: '淄博医院管理员', role: 'dietitian', organization: '北大医疗淄博医院', adminLevel: 'org', campIds: [], active: true, createdAt: iso(-30, '08:30:00') },
   // 体验营养师 / 运营督导：同号不同角色，带督导权限可见运营总览
-  { id: 'sup1', phone: '13900000009', name: '运营督导', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2'], active: true, supervisor: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'sup1', phone: '13900000009', name: '运营督导', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2', 'camp3'], active: true, supervisor: true, createdAt: iso(-30, '09:00:00') },
   // 教练
   { id: 'c1', phone: '13700000001', name: '李教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-28, '10:00:00') },
   { id: 'c2', phone: '13700000002', name: '王教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
-  { id: 'c3', phone: '13700000003', name: '张教练', role: 'coach', active: true, createdAt: iso(-28, '10:00:00') },
+  { id: 'c3', phone: '13700000003', name: '张教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp2'], active: true, createdAt: iso(-28, '10:00:00') },
+  { id: 'c5', phone: '13700000005', name: '陈教练', role: 'coach', organization: '北大国际医院', campIds: ['camp3'], active: true, createdAt: iso(-5, '10:00:00') },
   // 体验教练：同号不同角色
-  { id: 'c4', phone: '13900000009', name: '体验教练', role: 'coach', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
+  { id: 'c4', phone: '13900000009', name: '体验教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
   // 学员（id 与 MOCK_STUDENTS 一致，确保登录后能关联到打卡/体重/检测数据）
-  { id: 's1', phone: '13800000001', name: '李明', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's1', phone: '13800000001', name: '李明', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
   { id: 's2', phone: '13800000002', name: '王丽', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's3', phone: '13800000003', name: '张伟', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's4', phone: '13800000004', name: '赵静', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's5', phone: '13800000005', name: '周杰', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's6', phone: '13800000006', name: '吴磊', role: 'student', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's7', phone: '13800000007', name: '郑爽', role: 'student', campIds: ['camp2'], active: true, createdAt: iso(-2, '08:00:00') },
-  { id: 's8', phone: '13800000008', name: '王强', role: 'student', campIds: ['camp2'], active: true, createdAt: iso(-2, '08:00:00') },
-  { id: 's9', phone: '13800000009', name: '刘梅', role: 'student', campIds: ['camp2'], active: false, createdAt: iso(-2, '08:00:00') },
-  { id: 's10', phone: '13800000010', name: '孙悟空', role: 'student', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's3', phone: '13800000003', name: '张伟', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's4', phone: '13800000004', name: '赵静', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's5', phone: '13800000005', name: '周杰', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's6', phone: '13800000006', name: '吴磊', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's7', phone: '13800000007', name: '郑爽', role: 'student', organization: '北大医疗康复医院', campIds: ['camp2'], active: true, createdAt: iso(-2, '08:00:00') },
+  { id: 's8', phone: '13800000008', name: '王强', role: 'student', organization: '北大医疗康复医院', campIds: ['camp2'], active: true, createdAt: iso(-2, '08:00:00') },
+  { id: 's9', phone: '13800000009', name: '刘梅', role: 'student', organization: '北大医疗康复医院', campIds: ['camp2'], active: false, createdAt: iso(-2, '08:00:00') },
+  { id: 's10', phone: '13800000010', name: '孙悟空', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
   // 仅属于未开营营期（camp3）的学员，用于演示"营期未开始禁止打卡"
-  { id: 's11', phone: '13800000011', name: '钱多多', role: 'student', campIds: ['camp3'], active: true, createdAt: iso(7, '08:00:00') },
+  { id: 's11', phone: '13800000011', name: '钱多多', role: 'student', organization: '北大国际医院', campIds: ['camp3'], active: true, createdAt: iso(7, '08:00:00') },
   // 体验学员：同号不同角色
-  { id: 's13', phone: '13900000009', name: '体验学员', role: 'student', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's13', phone: '13900000009', name: '体验学员', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-15, '08:00:00') },
   // s12 演示用：仅部分打卡，展示打卡率与打卡全部完成率区别
-  { id: 's12', phone: '13800000012', name: '陈曦', role: 'student', campIds: ['camp2'], active: true, createdAt: iso(-10, '08:00:00') },
+  { id: 's12', phone: '13800000012', name: '陈曦', role: 'student', organization: '北大医疗康复医院', campIds: ['camp2'], active: true, createdAt: iso(-10, '08:00:00') },
 ];
 
 /** 积分商城商品 */
@@ -921,6 +927,7 @@ demoNewAccounts.forEach((a, i) => {
       phone: `138000000${14 + i}`,
       name: a.name,
       role: 'student',
+      organization: '北大医疗康复医院',
       campIds: a.campIds,
       active: true,
       createdAt: iso(-15, '08:00:00'),
@@ -1249,4 +1256,4 @@ export function hasCampMetricReview(campId?: string | null): boolean {
 export const DEMO_METRIC_CAMP1_STUDENT_IDS = DEMO_METRIC_CAMP1_IDS;
 
 /** 演示数据版本：用于本机旧快照的一次性增量合并（改动 mock 种子时 +1） */
-export const DEMO_SCHEMA_VERSION = 5;
+export const DEMO_SCHEMA_VERSION = 7;

@@ -8,9 +8,10 @@ import type { MealTimeConfig } from '../types';
 
 const store = useAppStore();
 
-const selectedCampId = ref<string>(store.camps[0]?.id || '');
+const accessibleCamps = computed(() => store.getAccessibleCamps());
+const selectedCampId = ref<string>(accessibleCamps.value[0]?.id || '');
 const showCampPicker = ref(false);
-const campColumns = computed(() => store.camps.map((c: any) => ({ text: c.name, value: c.id })));
+const campColumns = computed(() => accessibleCamps.value.map((c: any) => ({ text: c.name, value: c.id })));
 function onCampConfirm({ selectedValues }: { selectedValues: string[] }) {
   if (selectedValues[0]) selectedCampId.value = selectedValues[0];
   showCampPicker.value = false;

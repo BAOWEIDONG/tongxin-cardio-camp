@@ -20,9 +20,7 @@ const searchQuery = ref('');
 const showCampPicker = ref(false);
 
 const availableCamps = computed(() => {
-  const account = store.accounts.find((a) => a.id === store.user?.id || a.phone === store.user?.phone);
-  if (!account?.campIds?.length) return store.camps;
-  return store.camps.filter((c) => account.campIds!.includes(c.id));
+  return store.getAccessibleCamps();
 });
 // 未选具体营期时回落到第一个 active 营期，避免"全部营期"跨期汇总导致多营期学员重复计分（与学员端/排名页口径一致）
 const activeCampId = computed(() => {
@@ -333,11 +331,11 @@ const maskPhone = (phone: string) => phone.replace(/(\d{3})\d{4}(\d{4})/, '$1***
         <template #icon><Users class="h-6 w-6" /></template>
         首页
       </VanTabbarItem>
-      <VanTabbarItem @click="store.setCurrentView('dietitian-unannotated-list')" :badge="unannotatedCount > 0 ? unannotatedCount : undefined">
+      <VanTabbarItem v-if="store.hasPermission('menu.dietitian_annotations')" @click="store.setCurrentView('dietitian-unannotated-list')" :badge="unannotatedCount > 0 ? unannotatedCount : undefined">
         <template #icon><FileText class="h-6 w-6" /></template>
         批注
       </VanTabbarItem>
-      <VanTabbarItem @click="store.setCurrentView('dietitian-config')" :badge="fulfillmentPendingCount > 0 ? fulfillmentPendingCount : undefined">
+      <VanTabbarItem v-if="store.hasPermission('menu.dietitian_config')" @click="store.setCurrentView('dietitian-config')" :badge="fulfillmentPendingCount > 0 ? fulfillmentPendingCount : undefined">
         <template #icon><Settings class="h-6 w-6" /></template>
         配置
       </VanTabbarItem>

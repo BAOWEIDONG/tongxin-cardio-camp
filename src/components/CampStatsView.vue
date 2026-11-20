@@ -9,19 +9,19 @@ import { Download } from 'lucide-vue-next';
 
 // 与指标配置一致的 key；仅统计有营前+营后数值的指标
 const INDICATORS = [
-  { key: 'mc_body_weight', name: '体重(kg)', isIncreaseGood: false },
-  { key: 'mc_body_fat', name: '脂肪量(kg)', isIncreaseGood: false },
-  { key: 'mc_body_skeletal', name: '骨骼肌(kg)', isIncreaseGood: true },
-  { key: 'mc_body_visceral', name: '内脏脂肪面积(cm²)', isIncreaseGood: false },
-  { key: 'mc_bs_fasting', name: '空腹血糖(mmol/L)', isIncreaseGood: false },
-  { key: 'mc_bl_tg', name: '甘油三酯(mmol/L)', isIncreaseGood: false },
+  { key: 'mc_cv_sbp', name: '收缩压(mmHg)', isIncreaseGood: false },
+  { key: 'mc_cv_dbp', name: '舒张压(mmHg)', isIncreaseGood: false },
+  { key: 'mc_bl_ldl', name: 'LDL-C(mmol/L)', isIncreaseGood: false },
+  { key: 'mc_cv_hr', name: '静息心率(次/分)', isIncreaseGood: false },
+  { key: 'mc_cv_hcy', name: '同型半胱氨酸(μmol/L)', isIncreaseGood: false },
+  { key: 'mc_body_weight', name: '体重(kg，体液参考)', isIncreaseGood: false },
 ];
 
 const store = useAppStore();
 const activeTab = ref<'individual' | 'average'>('average');
 
-const campId = computed(() => store.selectedCampId || latestOrFirstId(store.camps));
-const camp = computed(() => store.camps.find((c) => c.id === campId.value) || null);
+const campId = computed(() => store.selectedCampId || latestOrFirstId(store.getAccessibleCamps()));
+const camp = computed(() => store.getAccessibleCamps().find((c) => c.id === campId.value) || null);
 const students = computed(() => (campId.value ? store.getStudentsByCamp(campId.value) : []));
 
 const exportData = () => showToast('数据已导出');
@@ -67,7 +67,7 @@ const changeMeta = (val: number | null | undefined, isIncreaseGood: boolean) => 
   <div class="flex min-h-full flex-col bg-[#F7F8FA] pb-safe">
     <NavBar title="结营数据统计" :on-back="store.goBack">
       <template #right>
-        <button class="p-2 text-gray-500 hover:text-gray-900" @click="exportData">
+        <button v-if="store.hasPermission('action.export_report')" class="p-2 text-gray-500 hover:text-gray-900" @click="exportData">
           <Download class="w-5 h-5" />
         </button>
       </template>
@@ -94,7 +94,7 @@ const changeMeta = (val: number | null | undefined, isIncreaseGood: boolean) => 
       <Card class="p-0 overflow-hidden bg-white border border-gray-200">
         <div v-if="activeTab === 'average'">
           <div class="p-4 bg-gray-50 border-b border-gray-200">
-            <h3 class="font-bold text-gray-900 text-sm mb-1">训练营整体改善效果</h3>
+            <h3 class="font-bold text-gray-900 text-sm mb-1">心血管核心指标变化</h3>
             <p class="text-xs text-gray-500">基于 {{ studentChanges.length }} 名有营前/营后复测数据的学员（{{ camp?.name || '当前营期' }}）</p>
             <div class="flex gap-4 mt-3 text-xs">
               <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#0B5FD7]"></span>改善方向</span>

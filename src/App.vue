@@ -63,12 +63,14 @@ const VIEW_IMPORTERS: Record<string, () => Promise<{ default: Component }>> = {
   'badge-center': () => import('./components/BadgeCenterView.vue'),
   'badge-config': () => import('./components/BadgeConfigView.vue'),
   'supervisor-dashboard': () => import('./components/SupervisorDashboardView.vue'),
+  'admin-console': () => import('./components/AdminConsoleView.vue'),
+  'permission-config': () => import('./components/PermissionConfigView.vue'),
 };
 
 // 各角色底部 tab 与常用子页（角色预取，配合下方全量预取双保险）
 const ROLE_TABS: Record<string, string[]> = {
   student: ['dashboard', 'activity-hub', 'messages', 'health-profile', 'exercise', 'diet', 'weight-checkin', 'points-mall', 'calendar', 'reward'],
-  dietitian: ['dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'fulfillment-center', 'reward-config', 'dietitian-student-detail', 'account-manage'],
+  dietitian: ['dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'fulfillment-center', 'reward-config', 'dietitian-student-detail', 'account-manage', 'admin-console', 'permission-config'],
   coach: ['coach-dashboard', 'coach-student-detail', 'coach-unannotated-list', 'activity-upload', 'activities-list'],
   doctor: ['doctor-dashboard', 'online-chat'],
 };

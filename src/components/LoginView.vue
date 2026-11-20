@@ -3,14 +3,14 @@ import { ref } from 'vue';
 import { showDialog, Checkbox as VanCheckbox, showToast } from 'vant';
 import { useAppStore, isQuestionnaireSubmitted } from '../store/app';
 import { Button, NavBar } from './ui';
-import { MessageCircle, UserCircle, Dumbbell, Leaf, HeartPulse, Stethoscope } from 'lucide-vue-next';
+import { MessageCircle, UserCircle, Dumbbell, Leaf, HeartPulse, Stethoscope, ShieldCheck } from 'lucide-vue-next';
 import type { Role } from '../types';
 
 const store = useAppStore();
 const step = ref<1 | 2>(1);
 const phone = ref('');
 const code = ref('');
-const role = ref<Role>('student');
+const role = ref<Role | 'admin'>('student');
 const agreed = ref(false);
 const error = ref('');
 
@@ -34,12 +34,16 @@ const handlePhoneSubmit = () => {
     return;
   }
 
-  // 校验：手机号必须在账户管理中已配置且角色匹配、状态启用
-  const account = store.accounts.find(
-    (a) => a.phone === phone.value && a.role === role.value && a.active,
-  );
+  // 管理端使用独立入口：一级集团管理员、二级医院管理员均可从此登录
+  const account = role.value === 'admin'
+    ? store.accounts.find((a) => a.phone === phone.value && a.active && (a.adminLevel || a.supervisor))
+    : store.accounts.find((a) => a.phone === phone.value && a.role === role.value && a.active);
 
   if (!account) {
+    if (role.value === 'admin') {
+      error.value = '该手机号不是集团或医院管理员账号，请确认后重试';
+      return;
+    }
     // 尝试找到该手机号但角色不匹配的账户，给出更精确的提示
     const wrongRoleAccount = store.accounts.find((a) => a.phone === phone.value && a.active);
     if (wrongRoleAccount) {
@@ -70,10 +74,15 @@ const handlePhoneSubmit = () => {
     age: studentInfo?.age,
     supervisor: account.supervisor === true,
   });
-  const roleLabel = account.role === 'dietitian' ? '营养师' : account.role === 'coach' ? '运动康复师' : account.role === 'doctor' ? '医师' : '学员';
+  const roleLabel = account.adminLevel === 'platform'
+    ? '集团管理员'
+    : account.adminLevel === 'org'
+      ? '医院管理员'
+      : account.role === 'dietitian' ? '营养师' : account.role === 'coach' ? '运动康复师' : account.role === 'doctor' ? '医师' : '学员';
   showToast(`欢迎回来${account.name ? '，' + roleLabel + ' ' + account.name : '，' + roleLabel}`);
 
-  if (account.role === 'doctor') store.resetToView('doctor-dashboard');
+  if (account.adminLevel || account.supervisor) store.resetToView('admin-console');
+  else if (account.role === 'doctor') store.resetToView('doctor-dashboard');
   else if (account.role === 'coach') store.resetToView('coach-dashboard');
   else if (account.role === 'dietitian') store.resetToView('dietitian-dashboard');
   else store.resetToView(isQuestionnaireSubmitted(account.id) ? 'dashboard' : 'questionnaire');
@@ -130,6 +139,18 @@ const handlePhoneSubmit = () => {
             </div>
             <span :class="['text-sm font-bold', role === 'dietitian' ? 'text-[#1677FF]' : 'text-gray-600']">营养师</span>
           </button>
+          <button
+            @click="role = 'admin'"
+            :class="['col-span-2 flex items-center justify-center gap-3 py-3 rounded-2xl border-2 transition-all', role === 'admin' ? 'border-[#0B5FD7] bg-[#0B5FD7]/5' : 'border-blue-100 bg-blue-50/40 hover:border-[#0B5FD7]/40']"
+          >
+            <div :class="['p-2 rounded-full', role === 'admin' ? 'bg-[#0B5FD7] text-white' : 'bg-[#0B5FD7]/10 text-[#0B5FD7]']">
+              <ShieldCheck class="w-5 h-5" />
+            </div>
+            <div class="text-left">
+              <div :class="['text-sm font-bold', role === 'admin' ? 'text-[#0B5FD7]' : 'text-gray-700']">管理端登录</div>
+              <div class="text-[10px] text-gray-400 mt-0.5">集团管理员 / 医院机构管理员</div>
+            </div>
+          </button>
         </div>
 
         <Button class="w-full" size="lg" @click="handleWeChatLogin">
@@ -140,18 +161,21 @@ const handlePhoneSubmit = () => {
 
       <p class="text-[10px] text-gray-400 text-center leading-relaxed">
         仅限营期内账户登录<br />
-        演示：学员 13800000001 · 医师 13600000001 · 验证码 123456
+        演示验证码 123456：学员 13800000001 · 医师 13600000001<br />
+        集团管理员 18888888888 · 医院管理员 13500000001
       </p>
     </div>
   </div>
 
   <div v-else class="flex flex-col bg-white" style="min-height: 100vh; min-height: 100dvh;">
-    <NavBar title="绑定手机号" :on-back="() => (step = 1)" />
+    <NavBar :title="role === 'admin' ? '管理员登录' : '绑定手机号'" :on-back="() => (step = 1)" />
 
     <div class="flex-1 flex flex-col px-6 pt-12 pb-6">
       <div class="mb-10">
-        <h2 class="text-2xl font-bold text-gray-900 mb-2">安全验证</h2>
-        <p class="text-sm text-gray-500">为了保障您的账号安全，请绑定您的常用手机号</p>
+          <h2 class="text-2xl font-bold text-gray-900 mb-2">{{ role === 'admin' ? '管理端安全验证' : '安全验证' }}</h2>
+        <p class="text-sm text-gray-500">
+          {{ role === 'admin' ? '请使用集团或医院管理员账号登录' : '为了保障您的账号安全，请绑定您的常用手机号' }}
+        </p>
       </div>
 
       <div class="space-y-6">
@@ -189,7 +213,7 @@ const handlePhoneSubmit = () => {
 
       <div class="mt-12">
         <Button class="w-full h-12 text-base font-medium rounded-full shadow-lg shadow-[#0B5FD7]/20" @click="handlePhoneSubmit">
-          确认绑定
+          {{ role === 'admin' ? '进入管理端' : '确认绑定' }}
         </Button>
         <div class="flex justify-center mt-6">
           <VanCheckbox :model-value="agreed" @update:model-value="(v: boolean) => { agreed = v; error = ''; }" class="custom-checkbox">

@@ -46,10 +46,11 @@ const ICONS: Record<Anchor, typeof Activity> = {
 };
 
 const tabs = computed(() => {
-  const list: { key: Anchor; label: string }[] = [{ key: 'dashboard', label: '首页' }];
-  if (showActivity.value) list.push({ key: 'activity-hub', label: '活动' });
-  list.push({ key: 'messages', label: '消息' });
-  list.push({ key: 'health-profile', label: '档案' });
+  const list: { key: Anchor; label: string }[] = [];
+  if (store.hasPermission('menu.dashboard')) list.push({ key: 'dashboard', label: '首页' });
+  if (showActivity.value && store.hasPermission('menu.activity_hub')) list.push({ key: 'activity-hub', label: '活动' });
+  if (store.hasPermission('menu.messages')) list.push({ key: 'messages', label: '消息' });
+  if (store.hasPermission('menu.health_profile')) list.push({ key: 'health-profile', label: '档案' });
   return list;
 });
 

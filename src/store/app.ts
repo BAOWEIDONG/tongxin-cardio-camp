@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
-import { showImagePreview } from 'vant';
+import { showImagePreview, showToast } from 'vant';
 import type {
   User, WeightRecord, ExerciseRecord, DietRecord, CheckinComment, CoachActivityRecord,
   RewardTier, RewardClaim, MealTimeConfig, MetricConfig, Camp, Account, PointProduct,
@@ -33,6 +33,15 @@ import { computeBadgeRecords, computeOneTimeBadgeRecords } from '../lib/badges';
 import { generateStudentReport } from '../lib/campReport';
 import { calculateStreak, calculateLongestStreakInRange } from '../lib/streak';
 import { latestOrFirst, latestOrFirstId } from '../lib/camps';
+import {
+  HOSPITALS,
+  ROLE_DEFAULT_PERMISSIONS,
+  ORG_ADMIN_PERMISSIONS,
+  PLATFORM_ONLY_PERMISSIONS,
+  ALL_PERMISSIONS,
+  VIEW_PERMISSION,
+  uniquePermissions,
+} from '../lib/permissions';
 import { loadMsgSeenState, saveMsgSeenState, systemMsgUnread } from '../lib/messageSeen';
 
 /** 生成 yyyy-MM-dd HH:mm:ss 格式的当前时间字符串（全站统一格式） */
@@ -122,7 +131,9 @@ export type View =
   | 'attendance-board'
   | 'badge-center'
   | 'badge-config'
-  | 'supervisor-dashboard';
+  | 'supervisor-dashboard'
+  | 'admin-console'
+  | 'permission-config';
 
 const AUTH_KEY = nsKey('auth');
 const BIZ_KEY = nsKey('biz_data');
@@ -379,6 +390,126 @@ export const useAppStore = defineStore('app', () => {
   const camps = ref<Camp[]>([...MOCK_CAMPS]);
   /** 账户列表（手机号=登录凭证） */
   const accounts = ref<Account[]>([...MOCK_ACCOUNTS]);
+  /** 医院 + 角色 的权限模板：organization -> role -> permission keys */
+  const permissionTemplates = ref<Record<string, Partial<Record<Role, string[]>>>>({});
+
+  function getMyAccount(): Account | null {
+    const u = user.value;
+    if (!u) return null;
+    return accounts.value.find((a) => a.id === u.id)
+      || accounts.value.find((a) => a.phone === u.phone && a.role === u.role)
+      || null;
+  }
+
+  function resolveAccountOrganization(account?: Account | null): string {
+    if (!account) return '';
+    if (account.organization) return account.organization;
+    const camp = camps.value.find((c) => account.campIds?.includes(c.id) && c.organization);
+    return camp?.organization || '';
+  }
+
+  function isPlatformAdminUser(target: User | null = user.value): boolean {
+    return !!target && (target.adminLevel === 'platform' || target.supervisor === true);
+  }
+
+  function isOrgAdminUser(target: User | null = user.value): boolean {
+    return !!target && target.adminLevel === 'org';
+  }
+
+  function getCurrentOrganization(): string {
+    return getMyAccount()?.organization || user.value?.organization || '';
+  }
+
+  function getAccessibleHospitals() {
+    if (!user.value) return [];
+    if (isPlatformAdminUser()) return HOSPITALS;
+    const org = getCurrentOrganization();
+    return HOSPITALS.filter((h) => h.id === org);
+  }
+
+  function getOrganizationCamps(organization?: string | null): Camp[] {
+    const org = organization || getCurrentOrganization();
+    if (!org) return [];
+    return camps.value.filter((c) => c.organization === org);
+  }
+
+  /** 当前账号可访问的营期：集团管理员=全部；机构管理员=本院；团队=本院+本人负责营期 */
+  function getAccessibleCamps(): Camp[] {
+    const account = getMyAccount();
+    const u = user.value;
+    if (!account || !u) return [];
+    if (u.role === 'student') return getStudentCamps(u.id);
+    if (isPlatformAdminUser(u)) return camps.value;
+    const org = resolveAccountOrganization(account);
+    const orgCamps = org ? camps.value.filter((c) => c.organization === org) : [];
+    if (isOrgAdminUser(u)) return orgCamps;
+    if (account.campIds?.length) return orgCamps.filter((c) => account.campIds!.includes(c.id));
+    return orgCamps;
+  }
+
+  function getOrganizationAccounts(organization?: string | null): Account[] {
+    const org = organization || getCurrentOrganization();
+    if (isPlatformAdminUser() && !organization) return accounts.value;
+    return accounts.value.filter((a) => resolveAccountOrganization(a) === org);
+  }
+
+  function getHospitalPermissionTemplate(organization: string, role: Role): string[] {
+    const configured = permissionTemplates.value[organization]?.[role];
+    return configured?.length ? configured : [...ROLE_DEFAULT_PERMISSIONS[role]];
+  }
+
+  /** 生效权限：平台管理员全量；机构管理员本院全量；团队成员=账号单独配置或医院角色模板 */
+  function getEffectivePermissions(account?: Account | null): string[] {
+    if (!account) return [];
+    if (account.adminLevel === 'platform' || account.supervisor) return [...ALL_PERMISSIONS];
+    if (account.adminLevel === 'org') return [...ORG_ADMIN_PERMISSIONS];
+    if (account.permissions?.length) return uniquePermissions([...account.permissions]);
+    const org = resolveAccountOrganization(account);
+    return org ? getHospitalPermissionTemplate(org, account.role) : [...ROLE_DEFAULT_PERMISSIONS[account.role]];
+  }
+
+  function refreshCurrentPermissions() {
+    if (!user.value) return;
+    const account = getMyAccount();
+    if (!account) return;
+    user.value = {
+      ...user.value,
+      organization: resolveAccountOrganization(account),
+      adminLevel: account.adminLevel,
+      supervisor: account.supervisor === true,
+      permissions: getEffectivePermissions(account),
+    };
+  }
+
+  function hasPermission(key: string): boolean {
+    if (!user.value) return false;
+    const account = getMyAccount();
+    const permissions = account
+      ? getEffectivePermissions(account)
+      : (user.value.permissions || ROLE_DEFAULT_PERMISSIONS[user.value.role] || []);
+    return permissions.includes(key);
+  }
+
+  function canAccessView(view: View): boolean {
+    const permission = VIEW_PERMISSION[view];
+    return !permission || hasPermission(permission);
+  }
+
+  function setHospitalPermissionTemplate(organization: string, role: Role, permissions: string[]): boolean {
+    if (!user.value) return false;
+    if (!isPlatformAdminUser() && (!isOrgAdminUser() || organization !== getCurrentOrganization())) return false;
+    const next = uniquePermissions(permissions)
+      .filter((key) => isPlatformAdminUser() || !PLATFORM_ONLY_PERMISSIONS.has(key));
+    permissionTemplates.value = {
+      ...permissionTemplates.value,
+      [organization]: {
+        ...(permissionTemplates.value[organization] || {}),
+        [role]: next,
+      },
+    };
+    refreshCurrentPermissions();
+    return true;
+  }
 
   /** 徽章配置（按营期独立，营养师可增删改） */
   const badgeConfigsByCamp = ref<Record<string, BadgeConfig[]>>({
@@ -421,7 +552,10 @@ export const useAppStore = defineStore('app', () => {
   // 联调加载：USE_MOCK=true 时返回同一份 mock（无副作用）；USE_MOCK=false 时从后端拉取
   async function init() {
     // 已有本地持久化的业务数据时直接回读，避免后续被 MOCK 种子覆盖（保证发货/批注等成果刷新后仍在）
-    if (restoreBiz()) return;
+    if (restoreBiz()) {
+      refreshCurrentPermissions();
+      return;
+    }
     try {
       const [studentList, diet, exercise, weight, activities, tiers, claims, metricCfgs, campList, accountList, products, exchanges] = await Promise.all([
         api.getStudents(),
@@ -470,6 +604,7 @@ export const useAppStore = defineStore('app', () => {
           // 单个营期配置加载失败不影响整体
         }
       }
+      refreshCurrentPermissions();
     } catch (e) {
       // 联调失败保留 mock 初值
     }
@@ -478,18 +613,7 @@ export const useAppStore = defineStore('app', () => {
   /** 默认展示最新营期：学员取本人所属期中最新的，教练取其负责期中最新的，营养师取全局最新的 */
   function applyLatestCampDefault() {
     if (!user.value) return;
-    let pool: Camp[];
-    if (user.value.role === 'student') {
-      pool = getStudentCamps(user.value.id);
-    } else if (user.value.role === 'coach') {
-      pool = getCoachCamps();
-    } else {
-      // 医师/营养师默认只落在本人负责的营期，避免跨机构/跨营期串数据
-      const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
-      pool = account?.campIds?.length
-        ? camps.value.filter((c) => account.campIds!.includes(c.id))
-        : camps.value;
-    }
+    const pool = getAccessibleCamps();
     let latestId = latestOrFirstId(pool);
     // 演示账号：默认展示数据完整的第一期（体测/报告/徽章都有内容），仍可在首页切到第二期
     if (user.value.role === 'student' && user.value.id === 's13') {
@@ -500,17 +624,29 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function setUser(u: User | null) {
-    user.value = u;
     if (u) {
+      const account = accounts.value.find((a) => a.id === u.id)
+        || accounts.value.find((a) => a.phone === u.phone && a.role === u.role);
+      const nextUser = account
+        ? {
+            ...u,
+            organization: resolveAccountOrganization(account),
+            adminLevel: account.adminLevel,
+            supervisor: account.supervisor === true,
+            permissions: getEffectivePermissions(account),
+          }
+        : u;
+      user.value = nextUser;
       // 默认展示最新营期（学员取本人所属期中最新的，营养师/教练取全局最新的）
       applyLatestCampDefault();
       // 持久化登录态到 localStorage，实现保活
       const authData = {
-        user: u,
+        user: nextUser,
         timestamp: Date.now(),
       };
       localStorage.setItem(AUTH_KEY, JSON.stringify(authData));
     } else {
+      user.value = null;
       localStorage.removeItem(AUTH_KEY);
     }
   }
@@ -567,21 +703,44 @@ export const useAppStore = defineStore('app', () => {
           }
         }
         user.value = data.user;
-        // 权限以账户数据为准：授权/收回后刷新页面也能生效
-        const acc = accounts.value.find((a) => a.id === data.user.id || a.phone === data.user.phone);
-        if (acc) user.value = {
-          ...user.value,
-          supervisor: acc.supervisor === true,
-          adminLevel: acc.adminLevel,
-          organization: acc.organization,
-        };
+        // 权限以持久化账户快照为准；init() 恢复完整业务数据后还会再刷新一次。
+        let accountPool = accounts.value;
+        let templatePool = permissionTemplates.value;
+        try {
+          const rawBiz = localStorage.getItem(BIZ_KEY);
+          const snap = rawBiz ? JSON.parse(rawBiz) : null;
+          if (snap && Array.isArray(snap.accounts) && snap.accounts.length > 0) accountPool = snap.accounts;
+          if (snap && snap.permissionTemplates) templatePool = snap.permissionTemplates;
+        } catch { /* 快照损坏时回退内存账户 */ }
+        const acc = accountPool.find((a) => a.id === data.user.id || a.phone === data.user.phone);
+        if (acc) {
+          const org = acc.organization
+            || camps.value.find((c) => acc.campIds?.includes(c.id) && c.organization)?.organization
+            || '';
+          const effective = acc.adminLevel === 'platform' || acc.supervisor
+            ? [...ALL_PERMISSIONS]
+            : acc.adminLevel === 'org'
+              ? [...ORG_ADMIN_PERMISSIONS]
+              : acc.permissions?.length
+                ? uniquePermissions([...acc.permissions])
+                : (templatePool[org]?.[acc.role] || ROLE_DEFAULT_PERMISSIONS[acc.role]);
+          user.value = {
+            ...user.value,
+            supervisor: acc.supervisor === true,
+            adminLevel: acc.adminLevel,
+            organization: org,
+            permissions: [...effective],
+          };
+        }
         // 默认展示最新营期
         applyLatestCampDefault();
         // 恢复问卷状态（按学员隔离，防止串用他人问卷数据）
         const qSaved = isQuestionnaireSubmitted(data.user.id);
         questionnaireAnswered.value = !!qSaved;
         // 根据角色和问卷状态跳转到对应首页
-        if (data.user.role === 'doctor') {
+        if (user.value.adminLevel || user.value.supervisor) {
+          viewHistory.value = ['admin-console'];
+        } else if (data.user.role === 'doctor') {
           viewHistory.value = ['doctor-dashboard'];
         } else if (data.user.role === 'coach') {
           viewHistory.value = ['coach-dashboard'];
@@ -617,7 +776,7 @@ export const useAppStore = defineStore('app', () => {
 
   /** 底部 Tab 根页面（切换时去重，避免历史栈无限增长） */
   // 学员端底部Tab：首页/消息/活动/档案（无活动配置时「活动」自动隐藏）；教练/营养师端各自的底部Tab根页
-  const TAB_ROOTS: View[] = ['dashboard', 'messages', 'activity-hub', 'health-profile', 'coach-dashboard', 'doctor-dashboard', 'dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'supervisor-dashboard'];
+  const TAB_ROOTS: View[] = ['dashboard', 'messages', 'activity-hub', 'health-profile', 'coach-dashboard', 'doctor-dashboard', 'dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'supervisor-dashboard', 'admin-console'];
 
   /** 学员详情流视图：在此流内继承 detailSelectedCampId，离开则清空（不污染全局 selectedCampId） */
   const DETAIL_FLOW_VIEWS: View[] = ['dietitian-student-detail', 'coach-student-detail', 'pointsDetail'];
@@ -657,6 +816,8 @@ export const useAppStore = defineStore('app', () => {
     'attendance-board': ['dietitian'],
     'badge-config': ['dietitian'],
     'fulfillment-center': ['dietitian'],
+    'admin-console': ['dietitian'],
+    'permission-config': ['dietitian'],
     'online-chat': ['student', 'doctor', 'coach', 'dietitian'],
   };
 
@@ -666,11 +827,13 @@ export const useAppStore = defineStore('app', () => {
     'badge-config',
     'activity-admin',
     'fulfillment-center',
-    'enterprise-report',
   ];
 
   function setCurrentView(view: View) {
     lastNavDirection.value = 'forward';
+    // 管理端是独立入口：只有一级平台管理员或二级医院管理员可进入
+    if ((view === 'admin-console' || view === 'permission-config')
+      && !user.value?.adminLevel && !user.value?.supervisor) return;
     // 运营总览守卫：无督导权限一律拦截（含底部 Tab / 历史栈可达路径）
     if (view === 'supervisor-dashboard' && !user.value?.supervisor) return;
     // 角色边界守卫：页面只能由对应角色进入
@@ -682,6 +845,12 @@ export const useAppStore = defineStore('app', () => {
       && user.value?.adminLevel !== 'platform') return;
     // 账户管理是二级机构操作权：仅平台管理员、督导或机构管理员可进入
     if (view === 'account-manage' && user.value && !user.value.supervisor && !user.value.adminLevel) return;
+    // 菜单权限：实际绑定到入口，未开通即拦截（防止历史栈/深链绕过）
+    const required = VIEW_PERMISSION[view];
+    if (required && user.value && !hasPermission(required)) {
+      showToast({ message: '当前账号未开通该功能，请联系医院管理员', position: 'top' });
+      return;
+    }
     // 入营问卷强制守卫：学员未完成问卷前，任何跳转一律被拉回问卷页，
     // 杜绝通过其它残留入口(如旧数据上传页 setCurrentView('dashboard'))绕过问卷直接进首页。
     // 以 localStorage 的 submitted_questionnaire 为权威完成标志（提交成功后立刻写入）。
@@ -792,6 +961,8 @@ export const useAppStore = defineStore('app', () => {
    * ★并发：由 annotationLock 编辑锁保证「先后提交」，此处直接覆写为单条最新。
    */
   function addRecordComment(type: 'diet' | 'weight' | 'exercise', recordId: string, entry: CheckinComment) {
+    const required = type === 'exercise' ? 'action.annotate_exercise' : 'action.annotate_diet';
+    if (user.value && !hasPermission(required)) return;
     const arr = type === 'diet' ? dietRecords.value : type === 'weight' ? weightRecords.value : exerciseRecords.value;
     const idx = arr.findIndex((r) => r.id === recordId);
     if (idx < 0) return;
@@ -898,7 +1069,15 @@ export const useAppStore = defineStore('app', () => {
   function currentStaffCampIds(): string[] {
     if (!user.value || user.value.role === 'student') return [];
     const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
-    return account?.campIds?.length ? account.campIds : camps.value.map((c) => c.id);
+    if (!account) return [];
+    if (isPlatformAdminUser()) return camps.value.map((c) => c.id);
+    const org = resolveAccountOrganization(account);
+    const orgCamps = camps.value.filter((c) => c.organization === org);
+    if (account.adminLevel === 'org') return orgCamps.map((c) => c.id);
+    if (account.campIds?.length) {
+      return orgCamps.filter((c) => account.campIds!.includes(c.id)).map((c) => c.id);
+    }
+    return orgCamps.map((c) => c.id);
   }
 
   function canAccessThread(thread: ChatThread): boolean {
@@ -964,14 +1143,19 @@ export const useAppStore = defineStore('app', () => {
 
   /** 从患者/学员列表直接打开其团队随访；没有会话时按需创建 */
   function openChatForStudent(studentId: string, campId?: string | null) {
+    if (!user.value) return;
+    if (user.value.role === 'student' && studentId !== user.value.id) return;
     let thread = getStudentChatThread(studentId, campId);
     if (!thread) {
       const acc = accounts.value.find((a) => a.id === studentId && a.role === 'student');
       if (!acc) return;
       const cid = campId || acc.campIds?.[0] || camps.value[0]?.id || 'camp1';
-      const doctor = accounts.value.find((a) => a.role === 'doctor' && (!a.campIds || a.campIds.includes(cid)));
-      const coach = accounts.value.find((a) => a.role === 'coach' && (!a.campIds || a.campIds.includes(cid)));
-      const dietitian = accounts.value.find((a) => a.role === 'dietitian' && (!a.campIds || a.campIds.includes(cid)));
+      if (user.value.role !== 'student' && !getAccessibleCamps().some((c) => c.id === cid)) return;
+      const org = resolveAccountOrganization(acc);
+      const sameOrg = (a: Account) => !org || resolveAccountOrganization(a) === org;
+      const doctor = accounts.value.find((a) => a.role === 'doctor' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+      const coach = accounts.value.find((a) => a.role === 'coach' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+      const dietitian = accounts.value.find((a) => a.role === 'dietitian' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
       const now = formatDateTimeStr();
       thread = {
         id: `ct_${studentId}_${cid}_${Date.now()}`,
@@ -996,6 +1180,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function sendChatMessage(threadId: string, text: string) {
+    if (user.value && !hasPermission('action.send_message')) return;
     const t = text.trim();
     const thread = getChatThread(threadId);
     const u = user.value;
@@ -1050,7 +1235,7 @@ export const useAppStore = defineStore('app', () => {
 
   function submitCardioPrescription(input: Omit<CardioPrescription, 'id' | 'status' | 'createdAt' | 'coachId' | 'doctorId' | 'signedAt'>) {
     const u = user.value;
-    if (!u || u.role !== 'coach') return null;
+    if (!u || u.role !== 'coach' || !hasPermission('action.create_prescription')) return null;
     const record: CardioPrescription = {
       ...input,
       id: `rx_${input.studentId}_${Date.now()}`,
@@ -1067,7 +1252,7 @@ export const useAppStore = defineStore('app', () => {
 
   function signCardioPrescription(id: string) {
     const u = user.value;
-    if (!u || u.role !== 'doctor') return false;
+    if (!u || u.role !== 'doctor' || !hasPermission('action.sign_prescription')) return false;
     const rx = prescriptions.value.find((p) => p.id === id);
     if (!rx || rx.status !== 'pending_doctor') return false;
     rx.status = 'signed';
@@ -1078,7 +1263,7 @@ export const useAppStore = defineStore('app', () => {
 
   function rejectCardioPrescription(id: string) {
     const u = user.value;
-    if (!u || u.role !== 'doctor') return false;
+    if (!u || u.role !== 'doctor' || !hasPermission('action.sign_prescription')) return false;
     const rx = prescriptions.value.find((p) => p.id === id);
     if (!rx || rx.status !== 'pending_doctor') return false;
     rx.status = 'rejected';
@@ -1419,14 +1604,14 @@ export const useAppStore = defineStore('app', () => {
     rewardTiers, rewardClaims, unlockRecords, campMessageList, metricConfigs, camps, accounts,
     pointProducts, pointExchanges, manualScoreRecords,
     activityConfigByCamp, mealTimeConfigByCamp,
-    badgeConfigsByCamp, badgeRecords, chatThreads, prescriptions,
+    badgeConfigsByCamp, badgeRecords, chatThreads, prescriptions, permissionTemplates,
   ];
   const bizNames = [
     'students', 'weightRecords', 'exerciseRecords', 'dietRecords', 'coachActivities',
     'rewardTiers', 'rewardClaims', 'unlockRecords', 'campMessageList', 'metricConfigs', 'camps', 'accounts',
     'pointProducts', 'pointExchanges', 'manualScoreRecords',
     'activityConfigByCamp', 'mealTimeConfigByCamp',
-    'badgeConfigsByCamp', 'badgeRecords', 'chatThreads', 'prescriptions',
+    'badgeConfigsByCamp', 'badgeRecords', 'chatThreads', 'prescriptions', 'permissionTemplates',
   ] as const;
   function persistBiz() {
     const snap: Record<string, unknown> = {};
@@ -1459,6 +1644,12 @@ export const useAppStore = defineStore('app', () => {
         if (!hit.campIds?.length && a.campIds?.length) hit.campIds = [...a.campIds];
       }
     });
+    // v7：营养师回归专业角色，管理权只保留给独立的管理员账号
+    if (fromVersion < 7) {
+      accounts.value.forEach((a) => {
+        if ((a.id === 'd1' || a.id === 'd2') && a.adminLevel === 'org') delete a.adminLevel;
+      });
+    }
     // 记录：清掉未来/开营前脏数据；v3 起用线性体重历史替换体验学员第一期旧体重
     if (fromVersion < 4) {
       weightRecords.value = weightRecords.value.filter((r) => !(r.studentId === 's13' && r.campId === 'camp1'));
@@ -1792,6 +1983,7 @@ export const useAppStore = defineStore('app', () => {
 
   // ─── 营期管理 ───
   function addCamp(camp: Camp) {
+    if (user.value && !hasPermission('action.create_camp')) return;
     camps.value.push(camp);
     api.createCamp(camp).catch(() => {});
   }
@@ -1910,14 +2102,27 @@ export const useAppStore = defineStore('app', () => {
 
   // ─── 账户管理 ───
   function addAccount(account: Account) {
+    if (user.value && !hasPermission('action.manage_accounts')) return;
+    if (user.value && !isPlatformAdminUser() && account.organization !== getCurrentOrganization()) return;
     accounts.value.push(account);
     api.createAccount(account).catch(() => {});
   }
   function updateAccount(id: string, updates: Partial<Account>) {
+    if (user.value && !hasPermission('action.manage_accounts')) return;
+    if (user.value && !isPlatformAdminUser()) {
+      const target = accounts.value.find((a) => a.id === id);
+      if (!target || resolveAccountOrganization(target) !== getCurrentOrganization()) return;
+      if (updates.organization && updates.organization !== getCurrentOrganization()) return;
+    }
     accounts.value = accounts.value.map((a) => (a.id === id ? { ...a, ...updates } : a));
     api.updateAccount(id, updates).catch(() => {});
   }
   function deleteAccount(id: string) {
+    if (user.value && !hasPermission('action.manage_accounts')) return;
+    if (user.value && !isPlatformAdminUser()) {
+      const target = accounts.value.find((a) => a.id === id);
+      if (!target || resolveAccountOrganization(target) !== getCurrentOrganization()) return;
+    }
     accounts.value = accounts.value.filter((a) => a.id !== id);
     api.deleteAccount(id).catch(() => {});
   }
@@ -2028,9 +2233,8 @@ export const useAppStore = defineStore('app', () => {
 
   function getCoachCamps(): Camp[] {
     if (!user.value || user.value.role !== 'coach') return [];
-    const account = accounts.value.find(a => a.id === user.value!.id || a.phone === user.value!.phone);
-    if (!account?.campIds || account.campIds.length === 0) return camps.value.filter(c => c.status === 'active');
-    return camps.value.filter(c => account.campIds.includes(c.id));
+    const ids = new Set(currentStaffCampIds());
+    return getAccessibleCamps().filter((c) => ids.has(c.id));
   }
 
   /** 获取教练负责的学员列表（按教练营期过滤） */
@@ -2054,9 +2258,8 @@ export const useAppStore = defineStore('app', () => {
 
   function getDoctorCamps(): Camp[] {
     if (!user.value || user.value.role !== 'doctor') return [];
-    const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
-    if (!account?.campIds || account.campIds.length === 0) return camps.value;
-    return camps.value.filter((c) => account.campIds!.includes(c.id));
+    const ids = new Set(currentStaffCampIds());
+    return getAccessibleCamps().filter((c) => ids.has(c.id));
   }
 
   const CARDIO_CONDITIONS: Record<string, string> = {
@@ -2072,7 +2275,8 @@ export const useAppStore = defineStore('app', () => {
   /** 医师端患者列表：只返回当前医师负责营期内的患者，并按血压/血脂分层 */
   function getDoctorPatients(campId?: string | null) {
     const allowedCamps = getDoctorCamps().map((c) => c.id);
-    const scope = campId ? [campId] : allowedCamps;
+    const scope = campId ? (allowedCamps.includes(campId) ? [campId] : []) : allowedCamps;
+    if (scope.length === 0) return [];
     return accounts.value
       .filter((a) => a.role === 'student' && a.active && a.campIds?.some((id) => scope.includes(id)))
       .map((a) => {
@@ -2109,6 +2313,10 @@ export const useAppStore = defineStore('app', () => {
 
   /** 获取指定营期的学员列表（从 accounts 中筛选 campIds 包含该营期且 active 的学员） */
   function getStudentsByCamp(campId: string): { id: string; name: string; phone: string; gender?: 'male' | 'female'; age?: number }[] {
+    if (user.value && user.value.role !== 'student' && !isPlatformAdminUser()) {
+      const allowed = new Set(getAccessibleCamps().map((c) => c.id));
+      if (!allowed.has(campId)) return [];
+    }
     return accounts.value
       .filter((a) => a.role === 'student' && a.active && a.campIds?.includes(campId))
       .map((a) => {
@@ -2126,8 +2334,12 @@ export const useAppStore = defineStore('app', () => {
 
   /** 获取所有活跃学员（不限营期） */
   function getAllStudents(): { id: string; name: string; phone: string; gender?: 'male' | 'female'; age?: number }[] {
+    const allowed = user.value && user.value.role !== 'student' && !isPlatformAdminUser()
+      ? new Set(getAccessibleCamps().map((c) => c.id))
+      : null;
     return accounts.value
-      .filter((a) => a.role === 'student' && a.active)
+      .filter((a) => a.role === 'student' && a.active
+        && (!allowed || a.campIds?.some((id) => allowed.has(id))))
       .map((a) => {
         const studentInfo = students.value.find((s) => s.id === a.id);
         return {
@@ -2279,6 +2491,7 @@ export const useAppStore = defineStore('app', () => {
     closeVideoPreview,
     camps,
     accounts,
+    permissionTemplates,
     addCamp,
     updateCamp,
     deleteCamp,
@@ -2299,6 +2512,20 @@ export const useAppStore = defineStore('app', () => {
     getStudentCampId,
     getStudentCamps,
     pickLatestCamp,
+    getMyAccount,
+    getAccessibleHospitals,
+    getOrganizationCamps,
+    getAccessibleCamps,
+    getOrganizationAccounts,
+    getHospitalPermissionTemplate,
+    getEffectivePermissions,
+    refreshCurrentPermissions,
+    hasPermission,
+    canAccessView,
+    setHospitalPermissionTemplate,
+    isPlatformAdminUser,
+    isOrgAdminUser,
+    getCurrentOrganization,
     badgeConfigsByCamp,
     badgeRecords,
     getBadgeConfigs,

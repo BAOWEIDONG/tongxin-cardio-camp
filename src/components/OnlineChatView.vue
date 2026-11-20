@@ -42,6 +42,10 @@ function scrollBottom() {
 
 function send(text?: string) {
   if (!thread.value) return;
+  if (!store.hasPermission('action.send_message')) {
+    showToast('当前账号为随访只读权限，不能发送消息');
+    return;
+  }
   const value = (text ?? input.value).trim();
   if (!value) return;
   store.sendChatMessage(thread.value.id, value);
@@ -131,7 +135,7 @@ if (!thread.value) {
         </div>
       </div>
 
-      <div class="shrink-0 border-t border-gray-100 bg-white px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))]">
+      <div v-if="store.hasPermission('action.send_message')" class="shrink-0 border-t border-gray-100 bg-white px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))]">
         <div class="mb-2 flex gap-1.5 overflow-x-auto pb-1">
           <button v-for="q in quickReplies" :key="q" class="shrink-0 rounded-full border border-[#0B5FD7]/20 bg-blue-50 px-2.5 py-1 text-[9px] text-[#0B5FD7] active:scale-95" @click="send(q)">
             {{ q }}
@@ -151,6 +155,9 @@ if (!thread.value) {
         <div class="mt-1.5 flex items-center justify-center gap-1 text-[9px] text-gray-400">
           <ShieldCheck class="h-3 w-3" /> 随访记录同步健康档案 · 互联网医院问诊需跳转第三方平台
         </div>
+      </div>
+      <div v-else class="shrink-0 border-t border-gray-100 bg-white px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-center text-[11px] text-gray-400">
+        当前账号仅有随访查看权限，不能发送消息
       </div>
     </template>
 
