@@ -159,7 +159,7 @@ persistTodayRank();
 
 const handleExportCSV = () => {
   const BOM = '﻿';
-  let csvContent = '排名,姓名,总积分,饮食积分,运动积分,手动调整\n';
+  let csvContent = '排名,姓名,总健康值,饮食健康值,运动健康值,手动调整\n';
 
   rankedStudents.value.forEach((row) => {
     csvContent += `${row.rank},${row.name},${row.totalScore},${row.dietScore},${row.exerciseScore},${(row as any).manualScore ?? 0}\n`;
@@ -169,7 +169,7 @@ const handleExportCSV = () => {
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
   link.setAttribute('href', url);
-  link.setAttribute('download', `学员积分排名_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `学员健康值排名_${new Date().toISOString().split('T')[0]}.csv`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
@@ -221,7 +221,7 @@ const rankNumberCls = (rank: number) =>
 
 <template>
   <div class="flex min-h-full flex-col bg-[#F7F8FA] relative">
-    <NavBar title="积分排行" :on-back="store.goBack">
+    <NavBar title="健康值排行" :on-back="store.goBack">
       <template #right>
         <div class="flex items-center gap-2">
           <button @click="handleRefresh" :disabled="isRefreshing" class="text-gray-500 hover:text-gray-900 p-2">
@@ -260,7 +260,7 @@ const rankNumberCls = (rank: number) =>
           <template v-else>
             <h2 class="text-lg font-bold mb-1 leading-snug">
               当前我的排名位于 <span @click="handleScrollToMe" class="text-white border-b border-white/60 cursor-pointer pb-0.5">{{ currentUserRank?.rank || '--' }}</span> 位，<br />
-              总积分 <span @click="store.user && handleRowClick(store.user.id)" class="text-white border-b border-white/60 cursor-pointer pb-0.5">{{ currentUserRank?.totalScore || 0 }}</span> 分
+              总健康值 <span @click="store.user && handleRowClick(store.user.id)" class="text-white border-b border-white/60 cursor-pointer pb-0.5">{{ currentUserRank?.totalScore || 0 }}</span>
             </h2>
             <p class="text-xs opacity-90 mt-2">'坚持打卡，健康生活每一天！'</p>
           </template>
@@ -271,7 +271,7 @@ const rankNumberCls = (rank: number) =>
             <div class="flex items-center justify-end -mt-3 mb-1">
         <button @click="showRules = true" class="flex items-center gap-1 text-xs text-gray-500 hover:text-[#FF976A] transition-colors">
           <Info class="w-3.5 h-3.5" />
-          积分规则
+          健康值规则
         </button>
       </div>
 
@@ -333,7 +333,7 @@ const rankNumberCls = (rank: number) =>
               {{ student.totalScore }}
             </div>
             <div class="text-[10px] text-gray-400 mt-1">
-              积分详情
+              健康值详情
             </div>
           </div>
           <ChevronRight :class="['w-4 h-4', store.user?.role === 'dietitian' || store.user?.id === student.studentId ? 'text-gray-300' : 'text-transparent']" />
@@ -346,12 +346,12 @@ const rankNumberCls = (rank: number) =>
 
     <VanPopup v-model:show="showRules" position="center" closeable close-icon-position="top-right" class="custom-popup">
       <div class="p-5 max-h-[80vh] ">
-        <h3 class="font-bold text-gray-900 text-base mb-3">打卡积分规则说明</h3>
+        <h3 class="font-bold text-gray-900 text-base mb-3">健康值规则说明</h3>
         <div class="text-sm text-gray-700 space-y-3 leading-relaxed">
           <p class="font-medium">本期心脑血管健康营为期{{ store.getCampDays(store.user?.id || '') || 21 }}天：</p>
           <p><span class="font-bold text-gray-900">饮食打卡：</span>饮食按一日三餐打卡，营养师对每餐进行评分（+2=较好落实计划 / +1=整体尚可但有改进空间 / 0=明显偏离计划），未批注不计分，单日饮食最高6分。</p>
           <p><span class="font-bold text-gray-900">运动打卡：</span>每日完成单次40分钟以上运动得1分基础分；教练评分直接加分：+2（到位）再得2分，+1（尚可）再得1分。</p>
-          <p>所有打卡积分累计后排名，积分越高名次越靠前，同分并列，对应名次均可兑换礼品，并列者享受同等激励。</p>
+          <p>所有打卡健康值累计后排名，健康值越高名次越靠前，同健康值并列，对应名次均可兑换礼品，并列者享受同等激励。</p>
         </div>
       </div>
     </VanPopup>
