@@ -64,6 +64,8 @@ const handlePhoneSubmit = () => {
     role: account.role,
     name: account.name,
     phone: account.phone,
+    organization: account.organization,
+    adminLevel: account.adminLevel,
     gender: studentInfo?.gender,
     age: studentInfo?.age,
     supervisor: account.supervisor === true,

@@ -11,7 +11,7 @@
  *    - 总分 = 各日积分之和
  *
  *  运动积分 (exerciseScore):
- *    - 每条运动记录: duration >= 40 分钟记 1 分（基础分）
+ *    - 每条运动记录: duration >= 20 分钟记 1 分（心血管营有效运动，低强度累计也计入）
  *    - 教练评分直接加分: coachScore=2 再 +2 分，coachScore=1 再 +1 分
  *    - 总分 = Σ 各条记录积分
  *
@@ -57,10 +57,10 @@ export function calculateDietScore(records: DietRecord[]): number {
  * 计算运动积分
  *
  * 公式:
- *   1. 每条记录 duration >= 40 分钟 -> 基础 1 分
+ *   1. 每条记录 duration >= 20 分钟 -> 基础 1 分（心血管营安全运动口径）
  *   2. 教练评分直接加分: coachScore=2 再 +2 分，coachScore=1 再 +1 分
  *
- * 每天最多 5 次运动打卡，每次有效运动（≥40min）均可计分。
+ * 每天最多 5 次运动打卡，每次有效运动（≥20min）均可计分。
  *
  * @param records 当前学员的运动记录
  * @returns 运动总分
@@ -68,7 +68,7 @@ export function calculateDietScore(records: DietRecord[]): number {
 export function calculateExerciseScore(records: ExerciseRecord[]): number {
   let totalScore = 0;
   records.forEach(record => {
-    if (record.duration >= 40) {
+    if (record.duration >= 20) {
       totalScore += 1;
     }
     // 教练评分直接作为加分

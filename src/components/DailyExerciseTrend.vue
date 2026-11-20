@@ -154,7 +154,7 @@ const hasRecords = computed(() => dayRecords.value.length > 0);
         </div>
         <div class="bg-gray-50 rounded-lg py-2">
           <div class="text-sm font-bold text-gray-900">{{ selectedDay.qualifiedCount }}</div>
-          <div class="text-[9px] text-gray-500">达标(≥40min)</div>
+          <div class="text-[9px] text-gray-500">有效运动(≥20min)</div>
         </div>
       </div>
 

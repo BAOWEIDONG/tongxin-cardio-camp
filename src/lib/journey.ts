@@ -97,7 +97,7 @@ export interface ExerciseTrend {
   totalDuration: number;
   /** 该周运动次数 */
   count: number;
-  /** 单次 ≥40 分钟的次数（企业积分规则中的有效运动） */
+  /** 单次 ≥20 分钟的次数（心血管营安全运动口径） */
   qualifiedCount: number;
   /** 平均强度（RPE 1-5），无记录为 null */
   avgIntensity: number | null;
@@ -561,8 +561,8 @@ export function computeDietScoreTrends(
  *  【规则】
  *    1. totalDuration = 该周所有运动记录的 duration 之和（分钟）
  *    2. count = 该周运动记录条数（同一天多次运动分别计数）
- *    3. qualifiedCount = 单次 duration ≥ 40 分钟的记录数
- *       - 与企业积分规则一致（每日完成单次40分钟以上运动即可计分），
+ *    3. qualifiedCount = 单次 duration ≥ 20 分钟的记录数
+ *       - 与心血管营积分规则一致（每日完成单次20分钟以上低至中等强度运动即可计分），
  *         学员可将此理解为"有效运动次数"
  *    4. avgIntensity = 该周记录 intensity 的算术平均值（RPE 1-5）
  *       - 无记录时为 null，前端显示 "--"
@@ -623,7 +623,7 @@ export function computeExerciseTrends(
     }
 
     const totalDuration = weekRecords.reduce((sum, r) => sum + r.duration, 0);
-    const qualifiedCount = weekRecords.filter((r) => r.duration >= 40).length;
+    const qualifiedCount = weekRecords.filter((r) => r.duration >= 20).length;
     const avgIntensity = weekRecords.length > 0
       ? weekRecords.reduce((sum, r) => sum + r.intensity, 0) / weekRecords.length
       : null;
@@ -652,7 +652,7 @@ export interface ExerciseDayTrend {
   totalDuration: number;
   /** 当日运动次数（同一天多次分别计数） */
   count: number;
-  /** 当日单次 ≥40 分钟的次数 */
+  /** 当日单次 ≥20 分钟的次数 */
   qualifiedCount: number;
   /** 当日平均强度（RPE 1-5），无记录为 null */
   avgIntensity: number | null;
@@ -684,7 +684,7 @@ export function computeDailyExerciseTrends(
       date: dStr,
       totalDuration: dayRecords.reduce((s, r) => s + r.duration, 0),
       count: dayRecords.length,
-      qualifiedCount: dayRecords.filter((r) => r.duration >= 40).length,
+      qualifiedCount: dayRecords.filter((r) => r.duration >= 20).length,
       avgIntensity: dayRecords.length > 0
         ? Math.round((dayRecords.reduce((s, r) => s + r.intensity, 0) / dayRecords.length) * 10) / 10
         : null,

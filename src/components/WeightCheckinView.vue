@@ -152,6 +152,20 @@ const sortedRecords = computed(() =>
     .sort((a, b) => a.date.localeCompare(b.date))
 );
 
+/** 心衰/水肿安全提示：短时间内体重快速上升比“减重进度”更值得关注 */
+const rapidWeightGain = computed(() => {
+  const list = sortedRecords.value;
+  if (list.length < 2) return null;
+  const latest = list[list.length - 1];
+  const prev = list[list.length - 2];
+  const days = (new Date(latest.date.replace(/-/g, '/')).getTime() - new Date(prev.date.replace(/-/g, '/')).getTime()) / 86400000;
+  const gain = latest.weight - prev.weight;
+  if (gain >= 2 && days <= 7) {
+    return `近 ${Math.max(1, Math.round(days))} 天体重增加 ${gain.toFixed(1)} kg`;
+  }
+  return null;
+});
+
 // 按日期分组的历史记录
 const reversedRecords = computed(() => [...sortedRecords.value].reverse());
 const { grouped: groupedHistory, toggleDate, isExpanded } = useDateGrouping(reversedRecords, { defaultExpandToday: false });
@@ -435,7 +449,7 @@ function handleChartTouchMove(e: TouchEvent) {
     <!-- ══════════ Tab 1: 打卡 ══════════ -->
     <div v-show="activeTab === 'checkin'" class="p-4 space-y-4 pb-32">
       <div class="text-center pt-2 pb-1">
-        <div class="text-sm text-gray-500">记录每日体重变化，见证慢病改善</div>
+        <div class="text-sm text-gray-500">晨起空腹、排空后称重，关注体液平衡而非单纯减重</div>
       </div>
 
       <Card class="p-4">
@@ -452,6 +466,20 @@ function handleChartTouchMove(e: TouchEvent) {
           <span class="text-xl font-medium text-gray-400 pb-1">kg</span>
         </div>
       </Card>
+
+      <div v-if="rapidWeightGain" class="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
+        <TrendingUp class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+        <div class="text-[11px] leading-relaxed text-red-600">
+          <span class="font-bold">{{ rapidWeightGain }}，请警惕水肿或心衰加重。</span>
+          请立即查看是否有脚踝水肿、夜间憋醒、活动后气短，并在团队随访中告知医师；不要自行加用利尿剂。
+        </div>
+      </div>
+      <div v-else class="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+        <Scale class="mt-0.5 h-4 w-4 shrink-0 text-[#0B5FD7]" />
+        <div class="text-[11px] leading-relaxed text-gray-600">
+          心血管营期不以“掉秤”作为唯一目标。若 1 周内体重增加 ≥2 kg，或出现脚踝水肿、夜间憋醒、平卧气短，请当天联系团队。
+        </div>
+      </div>
 
       <!-- Photo upload (折叠) -->
       <Card class="p-4 space-y-3">
@@ -513,9 +541,9 @@ function handleChartTouchMove(e: TouchEvent) {
           <div v-if="store.user?.targetWeight" class="flex items-baseline gap-2">
             <span class="text-2xl font-black text-[#FF976A]">{{ store.user.targetWeight }}</span>
             <span class="text-xs text-gray-400">kg</span>
-            <span v-if="weightStats" class="text-xs text-gray-500 ml-1">还差 {{ Math.abs(parseFloat((weightStats.last - store.user.targetWeight).toFixed(1))) }} kg</span>
+            <span v-if="weightStats" class="text-xs text-gray-500 ml-1">较目标相差 {{ Math.abs(parseFloat((weightStats.last - store.user.targetWeight).toFixed(1))) }} kg（仅作参考）</span>
           </div>
-          <div v-else class="text-xs text-gray-400">设置一个目标，趋势图会显示目标线，更有动力</div>
+          <div v-else class="text-xs text-gray-400">可选设置一个参考目标，趋势图会显示目标线；医师更关注短期波动和水肿情况</div>
         </div>
       </Card>
     </div>

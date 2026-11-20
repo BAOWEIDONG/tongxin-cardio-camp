@@ -9,7 +9,7 @@ import { rankStudents } from '../lib/scoring';
 import { Card } from './ui';
 import ActivityCard from './ActivityCard.vue';
 import type { CoachActivityRecord } from '../types';
-import { UserCircle, LogOut, Clock, FileText, Users, CheckCircle, XCircle, Search, X, ChevronDown, Dumbbell, ClipboardList, HeartPulse } from 'lucide-vue-next';
+import { UserCircle, LogOut, Clock, FileText, Users, CheckCircle, XCircle, Search, X, ChevronDown, Dumbbell, ClipboardList, HeartPulse, MessageCircle } from 'lucide-vue-next';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem, Popup as VanPopup, showConfirmDialog, showToast } from 'vant';
 
 const store = useAppStore();
@@ -21,27 +21,61 @@ const activeTab = computed<'incomplete' | 'completed' | 'activities'>({
 });
 const searchQuery = ref('');
 const showPrescription = ref(false);
-const prescriptionSubmitted = ref(false);
 const prescriptionForm = ref({
-  mode: '快走 + 低强度有氧',
-  intensity: '中低强度',
+  studentId: '',
+  mode: '室内快走 + 弹力带轻阻力训练',
+  intensity: '低至中等强度，RPE 11–13',
   freq: '5 次/周',
-  duration: '30–40 分钟',
-  note: '运动中可正常交谈；出现胸痛、胸闷、明显心悸时立即停止。',
+  duration: '20–30 分钟',
+  targetHr: '88–105 次/分（以能完整说句子为准）',
+  rpe: '11–13（轻到稍累）',
+  warmup: '慢走 + 踝泵 + 肩部活动 5 分钟',
+  cooldown: '慢走 + 小腿拉伸 5 分钟，避免突然停下',
+  stopSigns: '胸痛、胸闷、晕厥、明显心悸、异常气短或血压 ≥180/110 时立即停止',
+  note: '服药后 1 小时内避免突然加大强度；高温天气改为室内。',
 });
 
 function submitPrescription() {
-  prescriptionSubmitted.value = true;
+  if (!prescriptionForm.value.studentId || !activeCampId.value) {
+    showToast('请选择需要开处方的学员');
+    return;
+  }
+  store.submitCardioPrescription({
+    campId: activeCampId.value,
+    studentId: prescriptionForm.value.studentId,
+    mode: prescriptionForm.value.mode,
+    intensity: prescriptionForm.value.intensity,
+    frequency: prescriptionForm.value.freq,
+    duration: prescriptionForm.value.duration,
+    targetHr: prescriptionForm.value.targetHr,
+    rpe: prescriptionForm.value.rpe,
+    warmup: prescriptionForm.value.warmup,
+    cooldown: prescriptionForm.value.cooldown,
+    stopSigns: prescriptionForm.value.stopSigns,
+    note: prescriptionForm.value.note,
+  });
   showPrescription.value = false;
   showToast({ message: '运动处方已提交医师审核', position: 'top' });
 }
+
+const myPendingPrescriptions = computed(() => {
+  const coachId = store.user?.id;
+  return store.prescriptions.filter((p) =>
+    p.coachId === coachId && p.status === 'pending_doctor' && (!activeCampId.value || p.campId === activeCampId.value),
+  );
+});
+
+const openPrescriptionForm = () => {
+  prescriptionForm.value.studentId = campStudents.value[0]?.id || '';
+  showPrescription.value = true;
+};
 
 // ─── 营期切换 ───
 const showCampPicker = ref(false);
 const coachCamps = computed(() => store.getCoachCamps());
 // 未选具体营期时回落到第一个 active 营期，避免"全部营期"跨期汇总导致多营期学员重复计分（与营养师端/学员端口径一致）
 const activeCampId = computed(() => {
-  if (store.selectedCampId) return store.selectedCampId;
+  if (store.selectedCampId && coachCamps.value.some((c) => c.id === store.selectedCampId)) return store.selectedCampId;
   const active = coachCamps.value.find((c) => c.status === 'active');
   const first = coachCamps.value.length > 0 ? coachCamps.value[0] : null;
   return active?.id || first?.id || null;
@@ -133,6 +167,10 @@ const openStudent = (id: string) => {
   store.setCurrentView('coach-student-detail');
 };
 
+const openStudentChat = (id: string) => {
+  store.openChatForStudent(id, activeCampId.value);
+};
+
 // ─── 教练活动编辑/删除 ───
 const editActivity = (activity: CoachActivityRecord) => {
   store.setEditingActivity(activity);
@@ -201,10 +239,10 @@ const selectCamp = (campId: string | null) => {
           <div class="min-w-0 flex-1">
             <div class="text-sm font-bold text-gray-900">运动处方</div>
             <div class="text-[10px] text-gray-500 mt-0.5">
-              本周已提交 12 份 · 待医师签署 {{ prescriptionSubmitted ? 3 : 2 }} 份
+              当前营期待医师签署 {{ myPendingPrescriptions.length }} 份 · 签署后自动同步学员
             </div>
           </div>
-          <button class="text-[11px] font-bold text-white bg-[#0B5FD7] px-3 py-1.5 rounded-full shrink-0 active:scale-95" @click="showPrescription = true">
+          <button class="text-[11px] font-bold text-white bg-[#0B5FD7] px-3 py-1.5 rounded-full shrink-0 active:scale-95" @click="openPrescriptionForm">
             新建处方
           </button>
         </div>
@@ -283,7 +321,9 @@ const selectCamp = (campId: string | null) => {
                   </div>
                 </div>
               </div>
-              <div class="text-[#0B5FD7] font-bold">›</div>
+              <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#0B5FD7]" @click.stop="openStudentChat(student.id)">
+                <MessageCircle class="h-4 w-4" />
+              </button>
             </div>
             <button v-if="hasMore" @click="loadMore" class="w-full py-2.5 mb-1 text-xs font-bold text-[#0B5FD7] bg-white/55 backdrop-blur-md border border-[#0B5FD7]/30 rounded-xl active:bg-blue-50">
               加载更多（还有 {{ remaining }} 名学员）
@@ -351,17 +391,24 @@ const selectCamp = (campId: string | null) => {
 
     <!-- 运动处方弹窗 -->
     <VanPopup v-model:show="showPrescription" position="bottom" round>
-      <div class="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+      <div class="max-h-[88vh] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
         <div class="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200"></div>
         <div class="flex items-start justify-between">
           <div>
             <h3 class="text-lg font-bold text-gray-900">新建运动处方</h3>
-            <p class="mt-1 text-xs text-gray-400">李明 · 42 岁 · 高血压稳定期</p>
+            <p class="mt-1 text-xs text-gray-400">{{ activeCampName }} · 提交后由心血管医师签署</p>
           </div>
           <span class="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-[#0B5FD7]">提交医师审核</span>
         </div>
 
         <div class="mt-4 space-y-3">
+          <div>
+            <label class="text-[11px] font-bold text-gray-500">选择学员</label>
+            <select v-model="prescriptionForm.studentId" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-3 py-2.5 text-sm outline-none focus:border-[#0B5FD7]">
+              <option value="" disabled>请选择学员</option>
+              <option v-for="s in campStudents" :key="s.id" :value="s.id">{{ s.name }} · {{ s.age || '--' }}岁</option>
+            </select>
+          </div>
           <div>
             <label class="text-[11px] font-bold text-gray-500">运动方式</label>
             <input v-model="prescriptionForm.mode" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-3 py-2.5 text-sm outline-none focus:border-[#0B5FD7]" />
@@ -380,11 +427,32 @@ const selectCamp = (campId: string | null) => {
               <input v-model="prescriptionForm.duration" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
             </div>
           </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] font-bold text-gray-500">医师确认后心率区间</label>
+              <input v-model="prescriptionForm.targetHr" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-gray-500">RPE 主观强度</label>
+              <input v-model="prescriptionForm.rpe" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] font-bold text-gray-500">热身</label>
+              <input v-model="prescriptionForm.warmup" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-gray-500">放松</label>
+              <input v-model="prescriptionForm.cooldown" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
+            </div>
+          </div>
           <div class="rounded-xl border border-amber-100 bg-amber-50/70 p-3">
             <p class="flex items-center gap-1.5 text-[10px] font-bold text-amber-700">
-              <HeartPulse class="w-3.5 h-3.5" /> 风险提示
+              <HeartPulse class="w-3.5 h-3.5" /> 停止运动信号
             </p>
-            <textarea v-model="prescriptionForm.note" rows="2" class="mt-1.5 w-full resize-none bg-transparent text-[11px] leading-relaxed text-amber-700/80 outline-none" />
+            <textarea v-model="prescriptionForm.stopSigns" rows="2" class="mt-1.5 w-full resize-none bg-transparent text-[11px] leading-relaxed text-amber-700/80 outline-none" />
+            <input v-model="prescriptionForm.note" class="mt-2 w-full border-t border-amber-100 bg-transparent pt-2 text-[10px] text-amber-700/80 outline-none" placeholder="服药、天气等补充注意事项" />
           </div>
           <p class="text-[10px] text-gray-400">提交后将进入医师签署队列，签署通过后自动同步至学员端。</p>
         </div>

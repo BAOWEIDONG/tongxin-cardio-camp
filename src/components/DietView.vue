@@ -61,6 +61,9 @@ const formData = ref({
   hasStaple: false,
   hasProtein: false,
   hasVegetable: false,
+  lowSalt: false,
+  lowOil: false,
+  wholeGrain: false,
 });
 
 const photos = ref<string[]>([]);
@@ -144,10 +147,17 @@ const handleSubmit = () => {
     hasStaple: formData.value.isFasted ? false : formData.value.hasStaple,
     hasProtein: formData.value.isFasted ? false : formData.value.hasProtein,
     hasVegetable: formData.value.isFasted ? false : formData.value.hasVegetable,
+    lowSalt: formData.value.isFasted ? false : formData.value.lowSalt,
+    lowOil: formData.value.isFasted ? false : formData.value.lowOil,
+    wholeGrain: formData.value.isFasted ? false : formData.value.wholeGrain,
   });
 
   // reset form
-  formData.value = { meal: '', description: '', isFasted: false, hasStaple: false, hasProtein: false, hasVegetable: false };
+  formData.value = {
+    meal: '', description: '', isFasted: false,
+    hasStaple: false, hasProtein: false, hasVegetable: false,
+    lowSalt: false, lowOil: false, wholeGrain: false,
+  };
   photos.value = [];
 
   // 仅当连续天数增长且匹配档位且未领取时，触发奖励庆祝
@@ -313,6 +323,30 @@ onActivated(processPendingDeepLink);
         </div>
 
         <div v-if="!formData.isFasted" class="space-y-2">
+          <label class="text-sm font-medium text-gray-700 block">心血管饮食重点 <span class="text-[10px] font-normal text-gray-400">（可多选）</span></label>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              @click="formData.lowSalt = !formData.lowSalt"
+              :class="['rounded-lg border py-2 text-xs font-medium transition-all active:scale-95', formData.lowSalt ? 'border-[#0B5FD7] bg-[#0B5FD7] text-white shadow-sm' : 'border-gray-200 bg-white text-gray-600']"
+            >低盐</button>
+            <button
+              type="button"
+              @click="formData.lowOil = !formData.lowOil"
+              :class="['rounded-lg border py-2 text-xs font-medium transition-all active:scale-95', formData.lowOil ? 'border-[#0B5FD7] bg-[#0B5FD7] text-white shadow-sm' : 'border-gray-200 bg-white text-gray-600']"
+            >少油</button>
+            <button
+              type="button"
+              @click="formData.wholeGrain = !formData.wholeGrain"
+              :class="['rounded-lg border py-2 text-xs font-medium transition-all active:scale-95', formData.wholeGrain ? 'border-[#0B5FD7] bg-[#0B5FD7] text-white shadow-sm' : 'border-gray-200 bg-white text-gray-600']"
+            >全谷物</button>
+          </div>
+          <p class="text-[10px] leading-relaxed text-gray-400">
+            服用华法林者，绿叶菜摄入量需保持稳定，不要突然大幅增减；服用他汀期间避免大量西柚汁。
+          </p>
+        </div>
+
+        <div v-if="!formData.isFasted" class="space-y-2">
           <div class="flex justify-between items-center">
             <label class="text-sm font-medium text-gray-700 block">拍照记录 <span class="text-red-500">*</span></label>
             <input ref="photoInputRef" type="file" accept="image/*" multiple class="hidden" @change="handlePhotoSelect" />
@@ -386,11 +420,14 @@ onActivated(processPendingDeepLink);
                 <p class="text-sm text-gray-900 mb-3 whitespace-pre-wrap">{{ record.description }}</p>
 
                 <!-- 营养师评定的餐次结构标签 -->
-                <div v-if="record.hasStaple || record.hasProtein || record.hasVegetable" class="flex flex-wrap gap-1.5 mb-3">
+                <div v-if="record.hasStaple || record.hasProtein || record.hasVegetable || record.lowSalt || record.lowOil || record.wholeGrain" class="flex flex-wrap gap-1.5 mb-3">
                   <span class="text-[10px] text-gray-400 self-center">营养师评定:</span>
                   <span v-if="record.hasStaple" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">🍚 主食</span>
                   <span v-if="record.hasProtein" class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 font-medium">🥩 蛋白质</span>
                   <span v-if="record.hasVegetable" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 font-medium">🥬 蔬菜</span>
+                  <span v-if="record.lowSalt" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-[#0B5FD7] font-medium">🧂 低盐</span>
+                  <span v-if="record.lowOil" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 font-medium">🫒 少油</span>
+                  <span v-if="record.wholeGrain" class="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 font-medium">🌾 全谷物</span>
                 </div>
 
                 <div class="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">

@@ -6,7 +6,7 @@ import { useAppStore } from '../store/app';
 import { useDietitianCounts } from '../lib/dietitianCounts';
 import { campDateRange } from '../lib/camps';
 import { Card } from './ui';
-import { Users, UserCircle, LogOut, CheckCircle, XCircle, Search, X, FileText, Settings, ChevronDown, CalendarDays, BarChart3, ChevronRight } from 'lucide-vue-next';
+import { Users, UserCircle, LogOut, CheckCircle, XCircle, Search, X, FileText, Settings, ChevronDown, CalendarDays, BarChart3, ChevronRight, MessageCircle } from 'lucide-vue-next';
 import { format, subDays } from 'date-fns';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem, Popup as VanPopup } from 'vant';
 import { rankStudents } from '../lib/scoring';
@@ -19,17 +19,21 @@ const searchQuery = ref('');
 // ─── 营期切换 ───
 const showCampPicker = ref(false);
 
-const availableCamps = computed(() => store.camps);
+const availableCamps = computed(() => {
+  const account = store.accounts.find((a) => a.id === store.user?.id || a.phone === store.user?.phone);
+  if (!account?.campIds?.length) return store.camps;
+  return store.camps.filter((c) => account.campIds!.includes(c.id));
+});
 // 未选具体营期时回落到第一个 active 营期，避免"全部营期"跨期汇总导致多营期学员重复计分（与学员端/排名页口径一致）
 const activeCampId = computed(() => {
-  if (store.selectedCampId) return store.selectedCampId;
-  const active = store.camps.find((c) => c.status === 'active');
-  const first = store.camps.length > 0 ? store.camps[0] : null;
+  if (store.selectedCampId && availableCamps.value.some((c) => c.id === store.selectedCampId)) return store.selectedCampId;
+  const active = availableCamps.value.find((c) => c.status === 'active');
+  const first = availableCamps.value.length > 0 ? availableCamps.value[0] : null;
   return active?.id || first?.id || null;
 });
 const activeCampName = computed(() => {
   if (!activeCampId.value) return '全部营期';
-  return store.camps.find((c) => c.id === activeCampId.value)?.name || '全部营期';
+  return availableCamps.value.find((c) => c.id === activeCampId.value)?.name || '全部营期';
 });
 
 // 按营期过滤学员（null = 全部活跃学员）
@@ -144,6 +148,10 @@ const emptyText = computed(() => {
 const openStudent = (id: string) => {
   store.setSelectedStudentId(id);
   store.setCurrentView('dietitian-student-detail');
+};
+
+const openStudentChat = (id: string) => {
+  store.openChatForStudent(id, activeCampId.value);
 };
 
 const maskPhone = (phone: string) => phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
@@ -307,7 +315,9 @@ const maskPhone = (phone: string) => phone.replace(/(\d{3})\d{4}(\d{4})/, '$1***
                 </div>
               </div>
 
-              <div class="text-[#FF976A] font-bold">›</div>
+              <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF976A]" @click.stop="openStudentChat(student.id)">
+                <MessageCircle class="h-4 w-4" />
+              </button>
             </div>
             <button v-if="hasMore" @click="loadMore" class="w-full py-2.5 mb-1 text-xs font-bold text-[#FF976A] bg-white/55 backdrop-blur-md border border-[#FF976A]/30 rounded-xl active:bg-orange-50">
               加载更多（还有 {{ remaining }} 名学员）

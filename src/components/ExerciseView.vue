@@ -9,7 +9,7 @@ import { compressImage } from '../lib/imageCompress';
 import { compressVideo } from '../lib/videoCompress';
 import { NavBar, Card, Button, Input, ChartRulePopup, CheckinComments } from './ui';
 import { recordComments } from '../lib/comments';
-import { Plus, X, Camera, Video, PlayCircle, Loader, MessageCircle, ChevronDown, Dumbbell, TrendingUp } from 'lucide-vue-next';
+import { Plus, X, Camera, Video, PlayCircle, Loader, MessageCircle, ChevronDown, Dumbbell, TrendingUp, HeartPulse, ShieldCheck, AlertTriangle } from 'lucide-vue-next';
 import { showToast } from 'vant';
 import { computeExerciseTrends } from '../lib/journey';
 import DailyExerciseTrend from './DailyExerciseTrend.vue';
@@ -18,15 +18,15 @@ import { thumbUrl } from '../lib/imageThumb';
 import { useDateGrouping } from '../composables/useDateGrouping';
 import { useTabSwipe } from '../lib/useTabSwipe';
 
-const EXERCISE_TYPES = ['跑步', '游泳', '力量训练', '瑜伽', '快走', '骑行', '其他'];
+const EXERCISE_TYPES = ['快走', '心脏康复操', '太极', '室内单车', '骑行', '瑜伽', '力量训练', '游泳', '跑步', '其他'];
 
 /** 主观强度配置 — 颜色从冷到暖，描述参考 RPE (Rating of Perceived Exertion) 自感用力程度量表 */
 const INTENSITY_CONFIG = [
   { level: 1, label: '很轻松',   color: '#3B82F6', lightBg: '#EFF6FF', description: '散步般轻松，能正常对话和唱歌，几乎不喘',   example: '如：慢走、拉伸放松' },
   { level: 2, label: '轻松',     color: '#1677FF', lightBg: '#EFF6FF', description: '轻微出汗，可以正常聊天，呼吸略微加快',     example: '如：快走、轻松骑行' },
   { level: 3, label: '适中',     color: '#F59E0B', lightBg: '#FFFBEB', description: '微喘但能说话，燃脂黄金区间，适合日常锻炼', example: '如：慢跑、游泳、健身操' },
-  { level: 4, label: '较累',     color: '#F97316', lightBg: '#FFF7ED', description: '呼吸明显加快，能说短句，身体发热出汗',     example: '如：快跑、力量训练、爬楼梯' },
-  { level: 5, label: '非常吃力', color: '#EF4444', lightBg: '#FEF2F2', description: '呼吸急促只能说几个字，大汗淋漓，短暂即可', example: '如：跳绳、有氧操、快速爬坡' },
+  { level: 4, label: '偏强',     color: '#F97316', lightBg: '#FFF7ED', description: '呼吸明显加快，仅限医师处方明确允许时',     example: '如：较快速度爬坡、较大阻力训练' },
+  { level: 5, label: '高强度',   color: '#EF4444', lightBg: '#FEF2F2', description: '心血管营学员不可自行选择，需医师单独评估', example: '如：冲刺、爆发性训练、竞技比赛' },
 ] as const;
 
 type ActivityItem = {
@@ -53,6 +53,9 @@ const activeCampId = computed(() => {
   const active = availableCamps.value.find(c => c.status === 'active');
   return active?.id || availableCamps.value[0]?.id || null;
 });
+const activePrescription = computed(() =>
+  store.user?.id ? store.getStudentPrescription(store.user.id, activeCampId.value) : null,
+);
 
 // 按营期过滤打卡记录
 const campDiet = computed(() => activeCampId.value ? store.getCampDietRecords(activeCampId.value) : store.dietRecords);
@@ -72,7 +75,7 @@ const exerciseTrends = computed(() => computeExerciseTrends(campEx.value, store.
 // 全部运动统计（不限时间范围，包含所有历史记录）
 const totalExerciseCount = computed(() => userExercises.value.length);
 const totalExerciseDuration = computed(() => userExercises.value.reduce((sum, r) => sum + r.duration, 0));
-const qualifiedExerciseCount = computed(() => userExercises.value.filter(r => r.duration >= 40).length);
+const qualifiedExerciseCount = computed(() => userExercises.value.filter(r => r.duration >= 20).length);
 const avgExerciseDuration = computed(() => totalExerciseCount.value > 0 ? Math.round(totalExerciseDuration.value / totalExerciseCount.value) : 0);
 
 const activities = ref<ActivityItem[]>([
@@ -357,6 +360,12 @@ const handleSubmit = () => {
     return;
   }
 
+  const overPrescription = activities.value.find((a) => Number(a.intensity) >= 4);
+  if (overPrescription) {
+    showToast({ message: '当前为心血管运动处方，强度需控制在 Lv.1–3；更高强度须由医师单独评估', position: 'top', duration: 3000 });
+    return;
+  }
+
   for (const a of activities.value) {
     if (!a.duration) {
       showToast({ message: '请填写所有运动的时长', position: 'top', duration: 2500 });
@@ -447,6 +456,42 @@ const handleSubmit = () => {
         <button @click="activeTab = 'records'" class="text-xs font-bold text-[#0B5FD7] bg-white px-3 py-1.5 rounded-full active:scale-95 transition-transform shrink-0">查看记录</button>
       </div>
       <div v-if="hasReachedDailyLimit" class="h-0"></div>
+
+      <Card v-if="activePrescription" class="border border-blue-100 bg-gradient-to-br from-blue-50/80 to-white p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <ShieldCheck class="h-4 w-4 text-[#0B5FD7]" />
+            <span class="text-sm font-bold text-gray-900">医师签署的运动处方</span>
+          </div>
+          <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-600">安全强度</span>
+        </div>
+        <div class="mt-2 text-sm font-bold text-[#0B5FD7]">{{ activePrescription.mode }}</div>
+        <p class="mt-1 text-[10px] text-gray-500">{{ activePrescription.frequency }} · {{ activePrescription.duration }} · {{ activePrescription.intensity }}</p>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-white/80 px-2.5 py-2">
+            <div class="text-[9px] text-gray-400">目标心率</div>
+            <div class="mt-0.5 text-[10px] font-bold text-gray-800">{{ activePrescription.targetHr }}</div>
+          </div>
+          <div class="rounded-lg bg-white/80 px-2.5 py-2">
+            <div class="text-[9px] text-gray-400">RPE</div>
+            <div class="mt-0.5 text-[10px] font-bold text-gray-800">{{ activePrescription.rpe }}</div>
+          </div>
+        </div>
+        <p class="mt-2 text-[10px] leading-relaxed text-gray-500">热身：{{ activePrescription.warmup }}；放松：{{ activePrescription.cooldown }}</p>
+      </Card>
+      <Card v-else class="border border-amber-100 bg-amber-50/70 p-4 shadow-sm">
+        <div class="flex items-center gap-2 text-sm font-bold text-amber-700">
+          <HeartPulse class="h-4 w-4" /> 运动处方待医师签署
+        </div>
+        <p class="mt-1.5 text-[11px] leading-relaxed text-amber-700/80">签署前以低强度日常活动为主，不要自行进行跑步、冲刺或大重量力量训练。</p>
+      </Card>
+
+      <div class="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3">
+        <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+        <div class="text-[10px] leading-relaxed text-red-600">
+          <span class="font-bold">运动前：</span>静息血压 ≥180/110、发热或明显不适时暂停；<span class="font-bold">运动中：</span>出现胸痛、胸闷、晕厥、明显心悸或异常气短，立即停止并联系团队，必要时拨打 120。
+        </div>
+      </div>
 
       <Card v-for="(activity, index) in activities" :key="activity.id" class="space-y-5 relative pt-8 shadow-sm" :class="{ 'opacity-50 pointer-events-none': hasReachedDailyLimit }">
         <button
@@ -728,7 +773,7 @@ const handleSubmit = () => {
               <p><span class="font-bold text-gray-900">每日总时长：</span>该日所有运动记录的 duration 之和（分钟），同一日多次运动分别相加。</p>
               <p><span class="font-bold text-gray-900">平均强度：</span>该日记录 intensity 的算术平均值（RPE 1-5），无记录显示"--"。</p>
               <p><span class="font-bold text-gray-900">打卡次数：</span>该日运动记录条数，同一天多次运动分别计数。</p>
-              <p><span class="font-bold text-gray-900">达标（≥40min）：</span>单次运动时长≥40分钟的记录数。与积分规则一致--每日完成单次40分钟以上运动即可计分。</p>
+              <p><span class="font-bold text-gray-900">有效运动（≥20min）：</span>单次低至中等强度运动≥20分钟即计入，鼓励分段完成，不追求高强度。</p>
               <p><span class="font-bold text-gray-900">交互：</span>点击某根柱形查看当天记录；在图上左右滑动可切换前一天/后一天。</p>
             </ChartRulePopup>
           </div>
@@ -750,7 +795,7 @@ const handleSubmit = () => {
             </div>
             <div class="bg-[#FF976A]/5 rounded-lg py-2">
               <div class="text-sm font-bold text-[#FF976A]">{{ qualifiedExerciseCount }}</div>
-              <div class="text-[9px] text-gray-500">达标(≥40min)</div>
+              <div class="text-[9px] text-gray-500">有效运动(≥20min)</div>
             </div>
             <div class="bg-blue-50 rounded-lg py-2">
               <div class="text-sm font-bold text-blue-600">{{ avgExerciseDuration }}</div>

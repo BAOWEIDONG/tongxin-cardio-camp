@@ -45,6 +45,9 @@ const formData = reactive({
   chronicDetails: '',
   hasMedication: '',
   medicationDetails: '',
+  hasRecentEvent: '',
+  hasRestingSymptoms: '',
+  hasSevereBp: '',
   hasSpecialDiet: '',
   specialDietDetails: '',
   hasFoodAllergy: '',
@@ -102,6 +105,10 @@ const bmiInfo = computed(() => {
   return { text: '肥胖', color: 'text-red-500', bg: 'bg-red-50', tip: '别担心，北大医疗心脑血管团队会全程陪你科学管理体重与风险', range: '≥ 28.0' };
 });
 
+const safetyHold = computed(() =>
+  formData.hasRecentEvent === '有' || formData.hasRestingSymptoms === '有' || formData.hasSevereBp === '有',
+);
+
 // ---- 步进器 ----
 const adjustNumber = (field: 'sleepDuration' | 'dailyWater' | 'exerciseFrequency' | 'exerciseDuration', delta: number, min: number, max: number, stepVal: number, fallback: number) => {
   // 若当前为空（不应发生，兜底），以显示默认值为基准
@@ -133,7 +140,7 @@ const handleNext = () => {
     if (h < 100 || h > 250) { error.value = '身高需在100-250cm之间'; return; }
     if (w < 20 || w > 300) { error.value = '体重需在20-300kg之间'; return; }
   } else if (step.value === 2) {
-    if (!formData.hasChronic || !formData.hasMedication || !formData.hasSpecialDiet || !formData.hasFoodAllergy) {
+    if (!formData.hasChronic || !formData.hasMedication || !formData.hasRecentEvent || !formData.hasRestingSymptoms || !formData.hasSevereBp || !formData.hasSpecialDiet || !formData.hasFoodAllergy) {
       error.value = '请回答所有必填问题'; return;
     }
     if (formData.hasChronic === '有' && !formData.chronicDetails) { error.value = '请填写疾病名称'; return; }
@@ -433,6 +440,9 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
         <div v-for="q in [
             { key: 'hasChronic', detailKey: 'chronicDetails', label: '有确诊的心脑血管疾病或相关病史吗？', placeholder: '请填写疾病名称，如：高血压、颈动脉斑块、冠心病' },
             { key: 'hasMedication', detailKey: 'medicationDetails', label: '正在服用降压/降脂/抗凝药物吗？', placeholder: '请填写药物名称，如：氨氯地平、阿托伐他汀' },
+            { key: 'hasRecentEvent', detailKey: '', label: '近 3 个月是否因胸痛、胸闷、晕厥或心衰住院？', placeholder: '' },
+            { key: 'hasRestingSymptoms', detailKey: '', label: '静息时或轻微活动就会出现胸痛、胸闷、明显气短吗？', placeholder: '' },
+            { key: 'hasSevereBp', detailKey: '', label: '是否出现过血压 ≥180/110，或医师提示为未控制高血压？', placeholder: '' },
             { key: 'hasSpecialDiet', detailKey: 'specialDietDetails', label: '平时有特殊饮食要求吗？', placeholder: '请说明特殊饮食内容，如：素食、低盐' },
             { key: 'hasFoodAllergy', detailKey: 'foodAllergyDetails', label: '有食物过敏吗？', placeholder: '请列出过敏食物，如：海鲜、花生' },
           ]" :key="q.key" class="space-y-2.5">
@@ -449,7 +459,7 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
           </div>
           <transition name="step-fade">
             <input
-              v-if="(formData as any)[q.key] === '有'"
+              v-if="(formData as any)[q.key] === '有' && q.detailKey"
               type="text"
               :placeholder="q.placeholder"
               class="w-full rounded-xl border border-gray-200 p-3.5 focus:border-[#0B5FD7] focus:outline-none focus:ring-2 focus:ring-[#0B5FD7]/10"
@@ -457,6 +467,15 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
               @input="(formData as any)[q.detailKey] = ($event.target as HTMLInputElement).value; error = ''"
             />
           </transition>
+        </div>
+
+        <div v-if="safetyHold" class="rounded-2xl border border-red-200 bg-red-50 p-4">
+          <div class="flex items-center gap-2 text-sm font-bold text-red-700">
+            <HeartPulse class="h-4 w-4" /> 已触发运动安全复核
+          </div>
+          <p class="mt-1.5 text-[11px] leading-relaxed text-red-700/85">
+            入营后先由心血管医师复核，运动处方签署前不安排中高强度训练。如当前有胸痛、晕厥或严重气短，请立即就医。
+          </p>
         </div>
       </Card>
 

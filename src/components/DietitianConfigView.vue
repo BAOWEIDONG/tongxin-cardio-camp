@@ -3,8 +3,9 @@ import { computed } from 'vue';
 import { useAppStore } from '../store/app';
 import { useDietitianCounts } from '../lib/dietitianCounts';
 import { Card } from './ui';
-import { Clock, Gift, Trophy, Activity, FileText, Users, ChevronRight, Settings, Package, Award, BarChart3 } from 'lucide-vue-next';
+import { Clock, Gift, Trophy, Activity, FileText, Users, ChevronRight, Settings, Package, Award, BarChart3, LockKeyhole } from 'lucide-vue-next';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from 'vant';
+import { showToast } from 'vant';
 
 const store = useAppStore();
 
@@ -19,7 +20,11 @@ interface ConfigItem {
   icon: typeof Clock;
   color: string;
   badge?: number;
+  locked?: boolean;
 }
+
+const isPlatformAdmin = computed(() => store.user?.adminLevel === 'platform' || store.user?.supervisor === true);
+const platformOnlyViews = ['reward-config', 'fulfillment-center', 'activity-admin', 'badge-config'];
 
 const configItems = computed<ConfigItem[]>(() => [
   // 仅督导权限账号可见：全局运营数据入口
@@ -27,14 +32,22 @@ const configItems = computed<ConfigItem[]>(() => [
     ? [{ view: 'supervisor-dashboard', title: '运营总览', desc: '营养师/教练批注情况与完成率', icon: BarChart3, color: '#1F4E79' }]
     : []),
   { view: 'account-manage', title: '账户管理', desc: '各角色手机号与营期', icon: Users, color: '#FF976A' },
-  { view: 'reward-config', title: '奖品配置', desc: '连续打卡奖励阶梯与配置', icon: Gift, color: '#FF976A' },
-  { view: 'fulfillment-center', title: '发放中心', desc: '发货·发放·兑换记录', icon: Package, color: '#FF976A', badge: fulfillmentPending.value > 0 ? fulfillmentPending.value : undefined },
-  { view: 'activity-admin', title: '活动配置', desc: '连续打卡奖励与小红花商城开关', icon: Activity, color: '#FF976A' },
-  { view: 'badge-config', title: '徽章配置', desc: '趣味活动规则、徽章记录与清单导出', icon: Award, color: '#FF976A' },
+  { view: 'reward-config', title: '奖品配置', desc: '连续打卡奖励阶梯与配置', icon: Gift, color: '#FF976A', locked: !isPlatformAdmin.value },
+  { view: 'fulfillment-center', title: '发放中心', desc: '发货·发放·兑换记录', icon: Package, color: '#FF976A', badge: fulfillmentPending.value > 0 ? fulfillmentPending.value : undefined, locked: !isPlatformAdmin.value },
+  { view: 'activity-admin', title: '活动配置', desc: '连续打卡奖励与小红花商城开关', icon: Activity, color: '#FF976A', locked: !isPlatformAdmin.value },
+  { view: 'badge-config', title: '徽章配置', desc: '趣味活动规则、徽章记录与清单导出', icon: Award, color: '#FF976A', locked: !isPlatformAdmin.value },
   { view: 'metric-config', title: '指标配置', desc: '健康档案体检指标项', icon: FileText, color: '#FF976A' },
   { view: 'camp-summary', title: '结营统计', desc: '学员数据变化与打卡频率', icon: Trophy, color: '#FF976A' },
   { view: 'camp-stats', title: '指标变化统计', desc: '营前营后指标个人/均值对比', icon: BarChart3, color: '#FF976A' },
 ]);
+
+function openConfig(item: ConfigItem) {
+  if (item.locked) {
+    showToast({ message: '该规则由北大国际医院一级平台统一配置', position: 'top' });
+    return;
+  }
+  store.setCurrentView(item.view as any);
+}
 </script>
 
 <template>
@@ -57,7 +70,7 @@ const configItems = computed<ConfigItem[]>(() => [
           v-for="item in configItems"
           :key="item.view"
           class="flex items-center justify-between p-4 cursor-pointer hover:border-[#FF976A] transition-colors border-0 shadow-sm"
-          @click="store.setCurrentView(item.view as any)"
+          @click="openConfig(item)"
         >
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" :style="{ background: item.color + '15' }">
@@ -69,6 +82,9 @@ const configItems = computed<ConfigItem[]>(() => [
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
+            <span v-if="item.locked" class="flex items-center gap-0.5 rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-medium text-gray-400">
+              <LockKeyhole class="h-2.5 w-2.5" /> 平台统一配置
+            </span>
             <span v-if="item.badge" class="bg-[#FF4444] text-white text-[10px] font-bold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center">
               {{ item.badge }}
             </span>

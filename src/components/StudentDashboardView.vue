@@ -7,7 +7,7 @@ import type { View } from '../store/app';
 import { nsKey } from '../lib/storage';
 import { campDateRange, campDaysOf } from '../lib/camps';
 import { Card, GenderAvatar, StudentTabbar } from './ui';
-import { Activity, Coffee, Calendar, Scale, PlayCircle, LogOut, Medal, Trophy, Gift, BookOpen, MessageCircle, ChevronDown, TrendingDown, TrendingUp, Minus, Target, X, Sparkles, HeartPulse, Stethoscope, Send } from 'lucide-vue-next';
+import { Activity, Coffee, Calendar, Scale, PlayCircle, LogOut, Medal, Trophy, Gift, BookOpen, MessageCircle, ChevronDown, TrendingDown, TrendingUp, Minus, Target, X, Sparkles, HeartPulse, Stethoscope, ShieldCheck, AlertTriangle } from 'lucide-vue-next';
 import { Popup as VanPopup, showToast } from 'vant';
 import { rankStudents } from '../lib/scoring';
 import { getTodayQuote } from '../lib/motivationalQuotes';
@@ -97,27 +97,22 @@ const cardioRisk = computed(() => {
   return { label: '低危', cls: 'bg-blue-50 text-[#0B5FD7] border-blue-100' };
 });
 
-// ─── 医师在线随访（演示 IM，记录保存在本地会话） ───
-const showFollowupChat = ref(false);
-const chatInput = ref('');
-const chatMessages = ref([
-  { from: 'doctor', name: '周明远 医师', text: '您好，我是您的主管医师。已查看您近一周的家庭血压记录，整体较入营时平稳。' },
-  { from: 'doctor', name: '周明远 医师', text: '今天晨起血压 132/84，快走 30 分钟无胸闷，方案暂时不变。请继续低盐饮食并记录晨起血压。' },
-  { from: 'system', name: '随访提示', text: '本次线上随访将同步至健康档案并全程留痕。' },
-]);
+const activePrescription = computed(() =>
+  store.user?.id ? store.getStudentPrescription(store.user.id, activeCampId.value) : null,
+);
 
-const sendChat = () => {
-  const text = chatInput.value.trim();
-  if (!text) return;
-  chatMessages.value.push({ from: 'student', name: '我', text });
-  chatInput.value = '';
-  window.setTimeout(() => {
-    chatMessages.value.push({
-      from: 'doctor',
-      name: '周明远 医师',
-      text: '收到，我先记录下来。如出现胸痛、明显心悸或血压持续 ≥160/100，请立即联系团队或到院就诊。',
-    });
-  }, 900);
+const teamThread = computed(() =>
+  store.user?.id ? store.getStudentChatThread(store.user.id, activeCampId.value) : null,
+);
+const primaryDoctor = computed(() => teamThread.value?.members.find((m) => m.role === 'doctor') || null);
+
+// ─── 团队在线随访（与医师/康复师/营养师共用同一条会话） ───
+const openTeamFollowup = () => {
+  const sid = store.user?.id;
+  if (!sid) return;
+  const thread = store.getStudentChatThread(sid, activeCampId.value);
+  if (thread) store.openChatThread(thread.id);
+  else store.openChatForStudent(sid, activeCampId.value);
 };
 
 // ─── 营期切换器（多期时显示） ──────────────────────────────
@@ -757,14 +752,66 @@ onActivated(() => {
               <Stethoscope class="w-4 h-4" />
             </div>
             <div class="min-w-0 flex-1">
-              <div class="text-[11px] font-bold text-gray-900">主管医师 周明远 · 主任医师</div>
-              <div class="text-[9px] text-gray-500 mt-0.5">下次随访 11-23 · 运动处方已签署</div>
+              <div class="text-[11px] font-bold text-gray-900">
+                主管医师 {{ primaryDoctor?.name || '待分配' }} · {{ primaryDoctor?.title || '心血管团队' }}
+              </div>
+              <div class="text-[9px] text-gray-500 mt-0.5">
+                {{ activePrescription?.status === 'signed' ? '运动处方已签署' : '运动处方待医师签署' }} · 团队消息实时留痕
+              </div>
             </div>
-            <button class="text-[10px] font-bold text-[#0B5FD7] bg-white px-2.5 py-1.5 rounded-full shrink-0 active:scale-95" @click="showFollowupChat = true">
+            <button class="text-[10px] font-bold text-[#0B5FD7] bg-white px-2.5 py-1.5 rounded-full shrink-0 active:scale-95" @click="openTeamFollowup">
               在线随访
             </button>
           </div>
         </div>
+      </Card>
+
+      <!-- 医师签署后的心血管运动处方 -->
+      <Card class="p-4 border-0 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.14)]">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <ShieldCheck class="w-4 h-4 text-[#0B5FD7]" />
+            <span class="text-sm font-bold text-gray-900">我的运动处方</span>
+          </div>
+          <span v-if="activePrescription" :class="['text-[10px] font-bold px-2 py-0.5 rounded-full border', activePrescription.status === 'signed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100']">
+            {{ activePrescription.status === 'signed' ? '医师已签署' : '待医师签署' }}
+          </span>
+          <span v-else class="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-100">待评估</span>
+        </div>
+
+        <template v-if="activePrescription">
+          <div class="mt-3 rounded-xl bg-[#F5F9FF] p-3">
+            <div class="text-sm font-bold text-gray-900">{{ activePrescription.mode }}</div>
+            <div class="mt-1 text-[10px] leading-relaxed text-gray-500">
+              {{ activePrescription.frequency }} · 每次 {{ activePrescription.duration }} · {{ activePrescription.intensity }}
+            </div>
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="rounded-xl bg-blue-50/60 px-3 py-2">
+              <div class="text-[9px] text-gray-400">运动心率</div>
+              <div class="mt-0.5 text-[11px] font-bold text-[#0B5FD7]">{{ activePrescription.targetHr }}</div>
+            </div>
+            <div class="rounded-xl bg-blue-50/60 px-3 py-2">
+              <div class="text-[9px] text-gray-400">主观强度</div>
+              <div class="mt-0.5 text-[11px] font-bold text-[#0B5FD7]">{{ activePrescription.rpe }}</div>
+            </div>
+          </div>
+          <div class="mt-2 space-y-1 text-[10px] leading-relaxed text-gray-500">
+            <p><span class="font-bold text-gray-700">热身：</span>{{ activePrescription.warmup }}</p>
+            <p><span class="font-bold text-gray-700">放松：</span>{{ activePrescription.cooldown }}</p>
+            <p v-if="activePrescription.note"><span class="font-bold text-gray-700">注意：</span>{{ activePrescription.note }}</p>
+          </div>
+          <div class="mt-2 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2">
+            <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+            <p class="text-[10px] leading-relaxed text-red-600">{{ activePrescription.stopSigns }}</p>
+          </div>
+          <button class="mt-3 w-full rounded-xl border border-[#0B5FD7]/20 bg-white py-2 text-[11px] font-bold text-[#0B5FD7] active:bg-blue-50" @click="store.setCurrentView('exercise')">
+            查看运动记录与安全提示
+          </button>
+        </template>
+        <p v-else class="mt-3 rounded-xl bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-500">
+          康复师提交处方后，需由心血管医师核对病历、血压与用药情况并签署。签署前请按低强度日常活动为主。
+        </p>
       </Card>
 
       <!-- 每日打卡任务 -->
@@ -1064,51 +1111,6 @@ onActivated(() => {
         </div>
       </Transition>
     </Teleport>
-
-    <!-- 医师在线随访（演示 IM） -->
-    <VanPopup v-model:show="showFollowupChat" position="bottom" round :style="{ height: '78%' }">
-      <div class="flex h-full flex-col bg-[#F4F6F8]">
-        <div class="flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-100 shrink-0">
-          <div class="w-9 h-9 rounded-full bg-[#0B5FD7] flex items-center justify-center text-white">
-            <Stethoscope class="w-5 h-5" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-bold text-gray-900">周明远 医师 · 心血管内科</div>
-            <div class="text-[10px] text-[#0B5FD7] mt-0.5">北大国际医院 · 在线随访中</div>
-          </div>
-          <button class="text-gray-400 text-xl leading-none px-1" @click="showFollowupChat = false">×</button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          <div v-for="(m, idx) in chatMessages" :key="idx" :class="['flex', m.from === 'student' ? 'justify-end' : 'justify-start']">
-            <div v-if="m.from === 'system'" class="w-full rounded-xl bg-blue-50/80 border border-blue-100 px-3 py-2 text-center text-[10px] text-[#0B5FD7]">
-              {{ m.text }}
-            </div>
-            <div v-else :class="['max-w-[82%]', m.from === 'student' ? 'items-end' : 'items-start', 'flex flex-col gap-1']">
-              <span class="text-[9px] text-gray-400 px-1">{{ m.name }}</span>
-              <div :class="['rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm', m.from === 'student' ? 'bg-[#0B5FD7] text-white rounded-br-md' : 'bg-white text-gray-700 rounded-bl-md']">
-                {{ m.text }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="shrink-0 bg-white border-t border-gray-100 px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))]">
-          <div class="flex items-center gap-2">
-            <input
-              v-model="chatInput"
-              class="flex-1 bg-[#F4F6F8] rounded-full px-4 py-2.5 text-xs outline-none placeholder:text-gray-400"
-              placeholder="描述今天的血压、运动或不适情况"
-              @keyup.enter="sendChat"
-            />
-            <button class="w-9 h-9 rounded-full bg-[#0B5FD7] text-white flex items-center justify-center shrink-0 active:scale-95" @click="sendChat">
-              <Send class="w-4 h-4" />
-            </button>
-          </div>
-          <p class="text-[9px] text-gray-400 text-center mt-1.5">互联网医院问诊需跳转第三方平台，本页面仅用于团队随访</p>
-        </div>
-      </div>
-    </VanPopup>
 
     <!-- 营期选择弹窗 -->
     <VanPopup v-model:show="showCampPicker" position="bottom" round class="custom-popup">

@@ -11,7 +11,7 @@ const props = defineProps<{ records: ExerciseRecord[] }>();
 
 const totalCount = computed(() => props.records.length);
 const totalDuration = computed(() => props.records.reduce((s, r) => s + r.duration, 0));
-const qualifiedCount = computed(() => props.records.filter((r) => r.duration >= 40).length);
+const qualifiedCount = computed(() => props.records.filter((r) => r.duration >= 20).length);
 const avgDuration = computed(() => (totalCount.value > 0 ? Math.round(totalDuration.value / totalCount.value) : 0));
 </script>
 
@@ -26,7 +26,7 @@ const avgDuration = computed(() => (totalCount.value > 0 ? Math.round(totalDurat
         <span class="text-[10px] text-gray-400">单位：分钟</span>
         <ChartRulePopup title="运动趋势计算规则">
           <p><span class="font-bold text-gray-900">每日总时长：</span>该日所有运动记录的时长之和（分钟），同日多次分别相加。</p>
-          <p><span class="font-bold text-gray-900">达标（≥40min）：</span>单次时长≥40 分钟的记录数。与积分规则一致。</p>
+          <p><span class="font-bold text-gray-900">有效运动（≥20min）：</span>单次时长≥20 分钟的低至中等强度运动记录数。</p>
           <p><span class="font-bold text-gray-900">交互：</span>点击柱形看当天记录；图上左右滑动切换前一天/后一天。</p>
         </ChartRulePopup>
       </div>
@@ -48,7 +48,7 @@ const avgDuration = computed(() => (totalCount.value > 0 ? Math.round(totalDurat
         </div>
         <div class="bg-[#EBF5FF]/60 rounded-lg py-2">
           <div class="text-sm font-bold text-[#1677FF]">{{ qualifiedCount }}</div>
-          <div class="text-[9px] text-gray-500">达标次数</div>
+          <div class="text-[9px] text-gray-500">有效运动</div>
         </div>
         <div class="bg-[#FFF4ED]/60 rounded-lg py-2">
           <div class="text-sm font-bold text-[#FF6B35]">{{ avgDuration }}</div>

@@ -633,6 +633,11 @@ export const MOCK_METRIC_VALUES: Record<string, MetricValue> = {
 export const MOCK_STUDENT_METRIC_VALUES: Record<string, Record<string, MetricValue>> = {
   's1': MOCK_METRIC_VALUES,
   's2': {
+    'mc_cv_sbp': { beforeValue: 146, afterValue: 128 },
+    'mc_cv_dbp': { beforeValue: 92, afterValue: 82 },
+    'mc_cv_hr': { beforeValue: 78, afterValue: 72 },
+    'mc_cv_hcy': { beforeValue: 16.1, afterValue: 13.2 },
+    'mc_bl_ldl': { beforeValue: 3.2, afterValue: 2.5 },
     'mc_body_weight': { beforeValue: 62.0, afterValue: 58.5 },
     'mc_body_muscle': { beforeValue: 38.0, afterValue: 39.5 },
     'mc_body_skeletal': { beforeValue: 23.5, afterValue: 24.2 },
@@ -660,11 +665,15 @@ export const MOCK_STUDENT_METRIC_VALUES: Record<string, Record<string, MetricVal
     'mc_bl_tc': { beforeValue: 4.8, afterValue: 4.2 },
     'mc_bl_tg': { beforeValue: 1.3, afterValue: 1.0 },
     'mc_bl_hdl': { beforeValue: 1.2, afterValue: 1.4 },
-    'mc_bl_ldl': { beforeValue: 2.8, afterValue: 2.3 },
     'mc_bs_fasting': { beforeValue: 5.2, afterValue: 4.8 },
     'mc_bs_hba1c': { beforeValue: 5.6, afterValue: 5.3 },
   },
   's3': {
+    'mc_cv_sbp': { beforeValue: 162, afterValue: 138 },
+    'mc_cv_dbp': { beforeValue: 98, afterValue: 88 },
+    'mc_cv_hr': { beforeValue: 88, afterValue: 79 },
+    'mc_cv_hcy': { beforeValue: 19.5, afterValue: 14.8 },
+    'mc_bl_ldl': { beforeValue: 4.2, afterValue: 3.2 },
     'mc_body_weight': { beforeValue: 95.0, afterValue: 88.0 },
     'mc_body_muscle': { beforeValue: 48.0, afterValue: 49.5 },
     'mc_body_skeletal': { beforeValue: 30.0, afterValue: 30.8 },
@@ -692,7 +701,6 @@ export const MOCK_STUDENT_METRIC_VALUES: Record<string, Record<string, MetricVal
     'mc_bl_tc': { beforeValue: 6.2, afterValue: 5.0 },
     'mc_bl_tg': { beforeValue: 2.8, afterValue: 1.6 },
     'mc_bl_hdl': { beforeValue: 0.9, afterValue: 1.1 },
-    'mc_bl_ldl': { beforeValue: 4.0, afterValue: 3.0 },
     'mc_bs_fasting': { beforeValue: 6.5, afterValue: 5.6 },
     'mc_bs_hba1c': { beforeValue: 6.5, afterValue: 5.9 },
   },
@@ -814,23 +822,23 @@ export const MOCK_CAMPS: Camp[] = [
 /** 账户列表（手机号 = 登录凭证） */
 export const MOCK_ACCOUNTS: Account[] = [
   // 医师（心脑血管营新增角色）
-  { id: 'dr1', phone: '13600000001', name: '周明远', role: 'doctor', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'dr2', phone: '13600000002', name: '林静', role: 'doctor', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'dr1', phone: '13600000001', name: '周明远', role: 'doctor', organization: '北大国际医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'dr2', phone: '13600000002', name: '林静', role: 'doctor', organization: '北大国际医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
   // 营养师（第一批数据库预维护，后续可在营养师端管理）
-  { id: 'd0', phone: '18888888888', name: '管理员', role: 'dietitian', active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'd1', phone: '13900000001', name: '王营养师', role: 'dietitian', active: true, createdAt: iso(-30, '09:00:00') },
-  { id: 'd2', phone: '13900000002', name: '李营养师', role: 'dietitian', active: true, createdAt: iso(-20, '09:00:00') },
+  { id: 'd0', phone: '18888888888', name: '管理员', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'd1', phone: '13900000001', name: '王营养师', role: 'dietitian', organization: '北大医疗康复医院', adminLevel: 'org', campIds: ['camp1'], active: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'd2', phone: '13900000002', name: '李营养师', role: 'dietitian', organization: '北大医疗康复医院', adminLevel: 'org', campIds: ['camp2'], active: true, createdAt: iso(-20, '09:00:00') },
   // 体验营养师 / 运营督导：同号不同角色，带督导权限可见运营总览
-  { id: 'sup1', phone: '13900000009', name: '运营督导', role: 'dietitian', campIds: ['camp1', 'camp2'], active: true, supervisor: true, createdAt: iso(-30, '09:00:00') },
+  { id: 'sup1', phone: '13900000009', name: '运营督导', role: 'dietitian', organization: '北大国际医院', adminLevel: 'platform', campIds: ['camp1', 'camp2'], active: true, supervisor: true, createdAt: iso(-30, '09:00:00') },
   // 教练
-  { id: 'c1', phone: '13700000001', name: '李教练', role: 'coach', campIds: ['camp1'], active: true, createdAt: iso(-28, '10:00:00') },
-  { id: 'c2', phone: '13700000002', name: '王教练', role: 'coach', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
+  { id: 'c1', phone: '13700000001', name: '李教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-28, '10:00:00') },
+  { id: 'c2', phone: '13700000002', name: '王教练', role: 'coach', organization: '北大医疗康复医院', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
   { id: 'c3', phone: '13700000003', name: '张教练', role: 'coach', active: true, createdAt: iso(-28, '10:00:00') },
   // 体验教练：同号不同角色
   { id: 'c4', phone: '13900000009', name: '体验教练', role: 'coach', campIds: ['camp1', 'camp2'], active: true, createdAt: iso(-28, '10:00:00') },
   // 学员（id 与 MOCK_STUDENTS 一致，确保登录后能关联到打卡/体重/检测数据）
   { id: 's1', phone: '13800000001', name: '李明', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
-  { id: 's2', phone: '13800000002', name: '王丽', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
+  { id: 's2', phone: '13800000002', name: '王丽', role: 'student', organization: '北大医疗康复医院', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
   { id: 's3', phone: '13800000003', name: '张伟', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
   { id: 's4', phone: '13800000004', name: '赵静', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
   { id: 's5', phone: '13800000005', name: '周杰', role: 'student', campIds: ['camp1'], active: true, createdAt: iso(-15, '08:00:00') },
@@ -1241,4 +1249,4 @@ export function hasCampMetricReview(campId?: string | null): boolean {
 export const DEMO_METRIC_CAMP1_STUDENT_IDS = DEMO_METRIC_CAMP1_IDS;
 
 /** 演示数据版本：用于本机旧快照的一次性增量合并（改动 mock 种子时 +1） */
-export const DEMO_SCHEMA_VERSION = 4;
+export const DEMO_SCHEMA_VERSION = 5;

@@ -26,6 +26,14 @@ const medicalData = computed(() => {
   return buildMedicalData(store.metricConfigs, values, store.user?.gender);
 });
 
+const cardioMetricItems = computed(() =>
+  medicalData.value.find((cat: any) => cat.title === '心血管相关')?.items || [],
+);
+const medicationText = computed(() => {
+  if (!qData.value?.hasMedication || qData.value.hasMedication === '无') return '暂未记录长期用药';
+  return qData.value.medicationDetails || '已记录用药，具体名称待医护核对';
+});
+
 // Collapsible category state - default all expanded (empty set = nothing collapsed)
 const collapsedCats = ref<Set<string>>(new Set());
 const toggleCat = (title: string) => {
@@ -492,6 +500,36 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
         <p class="text-xs text-orange-800">
           提示：以下数据在客户结营完成后进行更新。橙色字体表示该指标超出医学参考范围。结营后数据若为空，显示为"待更新"；若报告中未包含该项，显示为"未检测"。
         </p>
+      </Card>
+
+      <Card class="border border-blue-100 bg-gradient-to-br from-blue-50/80 to-white p-4">
+        <h3 class="flex items-center gap-2 text-sm font-bold text-gray-900">
+          <Stethoscope class="h-4 w-4 text-[#0B5FD7]" />
+          心脑血管管理重点
+        </h3>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-xl bg-white/80 px-2 py-2">
+            <div class="text-[9px] text-gray-400">血压目标</div>
+            <div class="mt-1 text-[11px] font-bold text-[#0B5FD7]">&lt;130/80</div>
+            <div class="mt-0.5 text-[8px] text-gray-400">耐受情况下</div>
+          </div>
+          <div class="rounded-xl bg-white/80 px-2 py-2">
+            <div class="text-[9px] text-gray-400">LDL-C</div>
+            <div class="mt-1 text-[11px] font-bold text-[#0B5FD7]">个体化</div>
+            <div class="mt-0.5 text-[8px] text-gray-400">按危险分层</div>
+          </div>
+          <div class="rounded-xl bg-white/80 px-2 py-2">
+            <div class="text-[9px] text-gray-400">静息心率</div>
+            <div class="mt-1 text-[11px] font-bold text-[#0B5FD7]">55–80</div>
+            <div class="mt-0.5 text-[8px] text-gray-400">次/分参考</div>
+          </div>
+        </div>
+        <div class="mt-3 space-y-1.5 text-[10px] leading-relaxed text-gray-500">
+          <p><span class="font-bold text-gray-700">当前心血管指标：</span>{{ cardioMetricItems.length }} 项，包含血压、静息心率和同型半胱氨酸。</p>
+          <p><span class="font-bold text-gray-700">长期用药：</span>{{ medicationText }}</p>
+          <p>服用他汀期间避免大量西柚汁；服用华法林时绿叶菜摄入保持稳定；调整药物请先联系医师，不要自行停药。</p>
+          <p class="text-[#0B5FD7]">以上为一般管理目标，最终目标由医师根据冠心病、斑块、糖尿病等危险分层个体化确定。</p>
+        </div>
       </Card>
 
       <Card v-for="(cat, idx) in medicalData" :key="idx" class="p-0 overflow-hidden shadow-sm border border-gray-100">

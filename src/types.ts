@@ -19,6 +19,10 @@ export interface Account {
   phone: string;       // 手机号（唯一登录凭证）
   name: string;        // 姓名
   role: Role;          // student | coach | dietitian
+  /** 所属机构：用于二级机构账号隔离展示 */
+  organization?: string;
+  /** 管理级别：platform=国际医院一级管理，org=医院/机构二级操作 */
+  adminLevel?: 'platform' | 'org';
   /** 学员所属期（可多选，同一人可参与多期；教练/营养师不强制） */
   campIds?: string[];
   /** 是否启用（禁用后该手机号无法登录） */
@@ -39,6 +43,8 @@ export interface User {
   role: Role;
   name: string;
   phone: string;
+  organization?: string;
+  adminLevel?: 'platform' | 'org';
   gender?: 'male' | 'female';
   age?: number;
   height?: number;
@@ -138,6 +144,64 @@ export interface DietRecord {
   hasStaple?: boolean;    // 有主食
   hasProtein?: boolean;   // 有蛋白质
   hasVegetable?: boolean; // 有蔬菜
+  /** 心血管饮食重点：低盐、少油、全谷物 */
+  lowSalt?: boolean;
+  lowOil?: boolean;
+  wholeGrain?: boolean;
+}
+
+/** 多角色随访会话（纯前端 demo，同一浏览器内跨账号共享、持久化） */
+export interface ChatMember {
+  id: string;
+  name: string;
+  role: Role;
+  title: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: Role | 'system';
+  text: string;
+  date: string;
+  kind?: 'text' | 'system' | 'alert';
+}
+
+export interface ChatThread {
+  id: string;
+  campId: string;
+  studentId: string;
+  title: string;
+  topic: string;
+  members: ChatMember[];
+  messages: ChatMessage[];
+  updatedAt: string;
+  /** 各账号最近阅读时间，用于消息中心未读角标 */
+  lastReadAtByUser?: Record<string, string>;
+}
+
+/** 心血管运动处方：康复师提交、医师签署、学员端读取同一份状态 */
+export interface CardioPrescription {
+  id: string;
+  campId: string;
+  studentId: string;
+  coachId?: string;
+  doctorId?: string;
+  status: 'pending_doctor' | 'signed' | 'rejected';
+  mode: string;
+  intensity: string;
+  frequency: string;
+  duration: string;
+  targetHr: string;
+  rpe: string;
+  warmup: string;
+  cooldown: string;
+  stopSigns: string;
+  note?: string;
+  createdAt: string;
+  signedAt?: string;
 }
 
 /** 营养师手动加减分记录（用于补录线下打卡积分等） */

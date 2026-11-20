@@ -51,6 +51,7 @@ const VIEW_IMPORTERS: Record<string, () => Promise<{ default: Component }>> = {
   'activity-admin': () => import('./components/ActivityAdminView.vue'),
   'personal-journey': () => import('./components/PersonalJourneyView.vue'),
   messages: () => import('./components/MessagesView.vue'),
+  'online-chat': () => import('./components/OnlineChatView.vue'),
   'account-manage': () => import('./components/AccountManageView.vue'),
   'dietitian-config': () => import('./components/DietitianConfigView.vue'),
   'activity-hub': () => import('./components/ActivityHubView.vue'),
@@ -69,7 +70,7 @@ const ROLE_TABS: Record<string, string[]> = {
   student: ['dashboard', 'activity-hub', 'messages', 'health-profile', 'exercise', 'diet', 'weight-checkin', 'points-mall', 'calendar', 'reward'],
   dietitian: ['dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'fulfillment-center', 'reward-config', 'dietitian-student-detail', 'account-manage'],
   coach: ['coach-dashboard', 'coach-student-detail', 'coach-unannotated-list', 'activity-upload', 'activities-list'],
-  doctor: ['doctor-dashboard'],
+  doctor: ['doctor-dashboard', 'online-chat'],
 };
 let prefetchedRole = false;
 let prefetchedAll = false;

@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { showImagePreview } from 'vant';
-import type { User, WeightRecord, ExerciseRecord, DietRecord, CheckinComment, CoachActivityRecord, RewardTier, RewardClaim, MealTimeConfig, MetricConfig, Camp, Account, PointProduct, PointExchangeRecord, ManualScoreRecord, ExchangeAuditEntry, ConfigAudit, RewardTierSnapshot, UnlockRecord, CampMessageEntry, BadgeConfig, BadgeRecord } from '../types';
+import type {
+  User, WeightRecord, ExerciseRecord, DietRecord, CheckinComment, CoachActivityRecord,
+  RewardTier, RewardClaim, MealTimeConfig, MetricConfig, Camp, Account, PointProduct,
+  PointExchangeRecord, ManualScoreRecord, ExchangeAuditEntry, ConfigAudit,
+  RewardTierSnapshot, UnlockRecord, CampMessageEntry, BadgeConfig, BadgeRecord,
+  Role, ChatThread, ChatMessage, CardioPrescription,
+} from '../types';
 import {
   MOCK_REWARD_TIERS,
   MOCK_REWARD_CLAIMS,
@@ -32,6 +38,13 @@ import { loadMsgSeenState, saveMsgSeenState, systemMsgUnread } from '../lib/mess
 /** 生成 yyyy-MM-dd HH:mm:ss 格式的当前时间字符串（全站统一格式） */
 function formatDateTimeStr(): string {
   const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** 相对当前时间生成 yyyy-MM-dd HH:mm:ss，供演示会话/处方种子使用 */
+function relativeDateTime(minutesAgo: number): string {
+  const d = new Date(Date.now() - minutesAgo * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
@@ -98,6 +111,7 @@ export type View =
   | 'metric-config'
   | 'activity-admin'
   | 'messages'
+  | 'online-chat'
   | 'account-manage'
   | 'dietitian-config'
   | 'activity-hub'
@@ -109,6 +123,9 @@ export type View =
   | 'badge-center'
   | 'badge-config'
   | 'supervisor-dashboard';
+
+const AUTH_KEY = nsKey('auth');
+const BIZ_KEY = nsKey('biz_data');
 
 /** 趣味活动配置（营养师端可切换开关；学员端按此展示） */
 export interface ActivityConfig {
@@ -143,8 +160,8 @@ function defaultBadges(campId: string): BadgeConfig[] {
     { ...base, id: 'a_wl5', category: 'achievement', name: '减重 5kg', cadence: 'day', condition: 'weight_loss_kg', threshold: 5, icon: '👑', description: '体重下降达到 5kg' },
     { ...base, id: 'a_fat2', category: 'achievement', name: '燃脂勇士', cadence: 'day', condition: 'fat_loss_kg', threshold: 2, icon: '🔥', description: '脂肪量下降达到 2kg' },
     { ...base, id: 'a_early3', category: 'achievement', name: '晨型人', cadence: 'day', condition: 'early_exercise_count', threshold: 3, icon: '🌅', description: '早 9 点前完成运动满 3 次' },
-    { ...base, id: 'a_endurance60', category: 'achievement', name: '耐力王', cadence: 'day', condition: 'single_exercise_minutes', threshold: 60, icon: '🏅', description: '单次运动达到 60 分钟' },
-    { ...base, id: 'a_intensity5', category: 'achievement', name: '极限挑战', cadence: 'day', condition: 'max_intensity', threshold: 5, icon: '⚡', description: '完成一次 Lv.5 高强度运动' },
+    { ...base, id: 'a_endurance60', category: 'achievement', name: '稳步耐力', cadence: 'day', condition: 'single_exercise_minutes', threshold: 20, icon: '🏅', description: '安全完成单次 20 分钟以上运动' },
+    { ...base, id: 'a_intensity5', category: 'achievement', name: '安全强度', cadence: 'day', condition: 'max_intensity', threshold: 3, icon: '🛡️', description: '运动强度控制在医师建议范围内' },
     { ...base, id: 'a_types3', category: 'achievement', name: '运动多面手', cadence: 'day', condition: 'exercise_type_count', threshold: 3, icon: '🎽', description: '尝试 3 种以上运动' },
     // 活动（周期性，可重复）
     { ...base, id: 'b_day', category: 'activity', name: '每日打卡', cadence: 'day', condition: 'checkin_days', threshold: 1, icon: '🌱', description: '每天完成任意一项打卡即获得' },
@@ -372,6 +389,8 @@ export const useAppStore = defineStore('app', () => {
   const badgeRecords = ref<BadgeRecord[]>([]);
 
   const selectedStudentId = ref<string | null>(null);
+  /** 当前打开的随访会话；学员与医师/康复师/营养师共用同一条 thread */
+  const selectedChatThreadId = ref<string | null>(null);
   const selectedDateStr = ref<string | null>(null);
   /** 营养师首页「昨天/今天」切换后进入打卡情况看板的初始日期 */
   const attendanceBoardDate = ref<string>('');
@@ -465,7 +484,11 @@ export const useAppStore = defineStore('app', () => {
     } else if (user.value.role === 'coach') {
       pool = getCoachCamps();
     } else {
-      pool = camps.value;
+      // 医师/营养师默认只落在本人负责的营期，避免跨机构/跨营期串数据
+      const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
+      pool = account?.campIds?.length
+        ? camps.value.filter((c) => account.campIds!.includes(c.id))
+        : camps.value;
     }
     let latestId = latestOrFirstId(pool);
     // 演示账号：默认展示数据完整的第一期（体测/报告/徽章都有内容），仍可在首页切到第二期
@@ -486,9 +509,9 @@ export const useAppStore = defineStore('app', () => {
         user: u,
         timestamp: Date.now(),
       };
-      localStorage.setItem('camp_auth_versionall', JSON.stringify(authData));
+      localStorage.setItem(AUTH_KEY, JSON.stringify(authData));
     } else {
-      localStorage.removeItem('camp_auth_versionall');
+      localStorage.removeItem(AUTH_KEY);
     }
   }
 
@@ -512,19 +535,19 @@ export const useAppStore = defineStore('app', () => {
     }
     // 重新持久化
     const authData = { user: user.value, timestamp: Date.now() };
-    localStorage.setItem('camp_auth_versionall', JSON.stringify(authData));
+    localStorage.setItem(AUTH_KEY, JSON.stringify(authData));
   }
 
   /** 从 localStorage 恢复登录态（页面刷新/重新打开时自动登录） */
   function restoreAuth(): boolean {
     try {
-      const raw = localStorage.getItem('camp_auth_versionall');
+      const raw = localStorage.getItem(AUTH_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
       // 30 天过期
       const maxAge = 30 * 24 * 60 * 60 * 1000;
       if (Date.now() - data.timestamp > maxAge) {
-        localStorage.removeItem('camp_auth_versionall');
+        localStorage.removeItem(AUTH_KEY);
         return false;
       }
       if (data.user && data.user.role) {
@@ -533,20 +556,25 @@ export const useAppStore = defineStore('app', () => {
         if (data.user.role === 'student') {
           let accountPool = accounts.value;
           try {
-            const rawBiz = localStorage.getItem('camp_biz_data_versionall');
+            const rawBiz = localStorage.getItem(BIZ_KEY);
             const snap = rawBiz ? JSON.parse(rawBiz) : null;
             if (snap && Array.isArray(snap.accounts) && snap.accounts.length > 0) accountPool = snap.accounts;
           } catch { /* 快照损坏时回退内存账户 */ }
           const account = accountPool.find((a) => a.id === data.user.id && a.role === 'student');
           if (account && account.active === false) {
-            localStorage.removeItem('camp_auth_versionall');
+            localStorage.removeItem(AUTH_KEY);
             return false;
           }
         }
         user.value = data.user;
         // 权限以账户数据为准：授权/收回后刷新页面也能生效
         const acc = accounts.value.find((a) => a.id === data.user.id || a.phone === data.user.phone);
-        if (acc) user.value = { ...user.value, supervisor: acc.supervisor === true };
+        if (acc) user.value = {
+          ...user.value,
+          supervisor: acc.supervisor === true,
+          adminLevel: acc.adminLevel,
+          organization: acc.organization,
+        };
         // 默认展示最新营期
         applyLatestCampDefault();
         // 恢复问卷状态（按学员隔离，防止串用他人问卷数据）
@@ -567,7 +595,7 @@ export const useAppStore = defineStore('app', () => {
       }
     } catch (e) {
       // JSON 解析失败，清除无效数据
-      localStorage.removeItem('camp_auth_versionall');
+      localStorage.removeItem(AUTH_KEY);
     }
     return false;
   }
@@ -582,7 +610,8 @@ export const useAppStore = defineStore('app', () => {
   function logout() {
     user.value = null;
     selectedCampId.value = null;
-    localStorage.removeItem('camp_auth_versionall');
+    selectedChatThreadId.value = null;
+    localStorage.removeItem(AUTH_KEY);
     viewHistory.value = ['login'];
   }
 
@@ -593,10 +622,66 @@ export const useAppStore = defineStore('app', () => {
   /** 学员详情流视图：在此流内继承 detailSelectedCampId，离开则清空（不污染全局 selectedCampId） */
   const DETAIL_FLOW_VIEWS: View[] = ['dietitian-student-detail', 'coach-student-detail', 'pointsDetail'];
 
+  /** 页面级角色守卫：防止通过历史栈/残留入口绕到底部导航进入其他角色工作台 */
+  const ROLE_VIEW_GUARD: Partial<Record<View, Role[]>> = {
+    dashboard: ['student'],
+    questionnaire: ['student'],
+    upload: ['student'],
+    'health-profile': ['student'],
+    exercise: ['student'],
+    diet: ['student'],
+    'weight-checkin': ['student'],
+    calendar: ['student'],
+    messages: ['student'],
+    'activity-hub': ['student'],
+    'points-mall': ['student'],
+    'my-rewards': ['student'],
+    'badge-center': ['student'],
+    'personal-journey': ['student'],
+    'camp-activities': ['student'],
+    'coach-dashboard': ['coach'],
+    'coach-student-detail': ['coach'],
+    'coach-unannotated-list': ['coach'],
+    'doctor-dashboard': ['doctor'],
+    'dietitian-dashboard': ['dietitian'],
+    'dietitian-student-detail': ['dietitian'],
+    'dietitian-unannotated-list': ['dietitian'],
+    'dietitian-config': ['dietitian'],
+    'account-manage': ['dietitian'],
+    'reward-config': ['dietitian'],
+    'meal-time-config': ['dietitian'],
+    'metric-config': ['dietitian'],
+    'activity-admin': ['dietitian'],
+    'camp-summary': ['dietitian'],
+    'enterprise-report': ['dietitian'],
+    'attendance-board': ['dietitian'],
+    'badge-config': ['dietitian'],
+    'fulfillment-center': ['dietitian'],
+    'online-chat': ['student', 'doctor', 'coach', 'dietitian'],
+  };
+
+  /** 一级平台专属配置：二级机构管理员只可查看说明，不可改动平台规则 */
+  const PLATFORM_ONLY_VIEWS: View[] = [
+    'reward-config',
+    'badge-config',
+    'activity-admin',
+    'fulfillment-center',
+    'enterprise-report',
+  ];
+
   function setCurrentView(view: View) {
     lastNavDirection.value = 'forward';
     // 运营总览守卫：无督导权限一律拦截（含底部 Tab / 历史栈可达路径）
     if (view === 'supervisor-dashboard' && !user.value?.supervisor) return;
+    // 角色边界守卫：页面只能由对应角色进入
+    const allowedRoles = ROLE_VIEW_GUARD[view];
+    if (allowedRoles && user.value && !allowedRoles.includes(user.value.role)) return;
+    // 一级平台规则配置守卫：机构管理员不可进入平台级规则页面
+    if (PLATFORM_ONLY_VIEWS.includes(view)
+      && !user.value?.supervisor
+      && user.value?.adminLevel !== 'platform') return;
+    // 账户管理是二级机构操作权：仅平台管理员、督导或机构管理员可进入
+    if (view === 'account-manage' && user.value && !user.value.supervisor && !user.value.adminLevel) return;
     // 入营问卷强制守卫：学员未完成问卷前，任何跳转一律被拉回问卷页，
     // 杜绝通过其它残留入口(如旧数据上传页 setCurrentView('dashboard'))绕过问卷直接进首页。
     // 以 localStorage 的 submitted_questionnaire 为权威完成标志（提交成功后立刻写入）。
@@ -807,6 +892,198 @@ export const useAppStore = defineStore('app', () => {
 
   function setSelectedDateStr(date: string | null) {
     selectedDateStr.value = date;
+  }
+
+  // ─── 多角色随访会话 ─────────────────────────────────────────
+  function currentStaffCampIds(): string[] {
+    if (!user.value || user.value.role === 'student') return [];
+    const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
+    return account?.campIds?.length ? account.campIds : camps.value.map((c) => c.id);
+  }
+
+  function canAccessThread(thread: ChatThread): boolean {
+    const u = user.value;
+    if (!u) return false;
+    if (u.role === 'student') return thread.studentId === u.id;
+    return currentStaffCampIds().includes(thread.campId);
+  }
+
+  function getMyChatThreads(): ChatThread[] {
+    return chatThreads.value
+      .filter(canAccessThread)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  function getChatThread(id: string | null | undefined): ChatThread | null {
+    if (!id) return null;
+    const thread = chatThreads.value.find((t) => t.id === id) || null;
+    return thread && canAccessThread(thread) ? thread : null;
+  }
+
+  function getStudentChatThread(studentId: string, campId?: string | null): ChatThread | null {
+    const camp = campId || getStudentCampId(studentId);
+    return chatThreads.value.find((t) => t.studentId === studentId && (!camp || t.campId === camp)) || null;
+  }
+
+  function getChatUnreadCount(thread: ChatThread, userId: string): number {
+    const lastRead = thread.lastReadAtByUser?.[userId] || '';
+    return thread.messages.filter((m) => m.senderId !== userId && m.date > lastRead).length;
+  }
+
+  function getMyChatUnreadCount(): number {
+    const uid = user.value?.id;
+    if (!uid) return 0;
+    return getMyChatThreads().reduce((sum, t) => sum + getChatUnreadCount(t, uid), 0);
+  }
+
+  function getStudentChatUnreadCount(studentId: string): number {
+    return getMyChatThreads()
+      .filter((t) => t.studentId === studentId)
+      .reduce((sum, t) => sum + getChatUnreadCount(t, studentId), 0);
+  }
+
+  function markChatRead(threadId: string) {
+    const uid = user.value?.id;
+    if (!uid) return;
+    const thread = chatThreads.value.find((t) => t.id === threadId);
+    if (!thread) return;
+    thread.lastReadAtByUser = { ...(thread.lastReadAtByUser || {}), [uid]: formatDateTimeStr() };
+  }
+
+  function setSelectedChatThreadId(threadId: string | null) {
+    selectedChatThreadId.value = threadId;
+  }
+
+  function openChatThread(threadId: string) {
+    const thread = getChatThread(threadId);
+    if (!thread) return;
+    selectedChatThreadId.value = thread.id;
+    markChatRead(thread.id);
+    setCurrentView('online-chat');
+  }
+
+  /** 从患者/学员列表直接打开其团队随访；没有会话时按需创建 */
+  function openChatForStudent(studentId: string, campId?: string | null) {
+    let thread = getStudentChatThread(studentId, campId);
+    if (!thread) {
+      const acc = accounts.value.find((a) => a.id === studentId && a.role === 'student');
+      if (!acc) return;
+      const cid = campId || acc.campIds?.[0] || camps.value[0]?.id || 'camp1';
+      const doctor = accounts.value.find((a) => a.role === 'doctor' && (!a.campIds || a.campIds.includes(cid)));
+      const coach = accounts.value.find((a) => a.role === 'coach' && (!a.campIds || a.campIds.includes(cid)));
+      const dietitian = accounts.value.find((a) => a.role === 'dietitian' && (!a.campIds || a.campIds.includes(cid)));
+      const now = formatDateTimeStr();
+      thread = {
+        id: `ct_${studentId}_${cid}_${Date.now()}`,
+        campId: cid,
+        studentId,
+        title: `${acc.name} · 心脑血管团队随访`,
+        topic: '团队在线随访',
+        updatedAt: now,
+        lastReadAtByUser: {},
+        members: [
+          { id: studentId, name: acc.name, role: 'student', title: '学员' },
+          ...(doctor ? [{ id: doctor.id, name: doctor.name, role: 'doctor' as const, title: '主管医师' }] : []),
+          ...(coach ? [{ id: coach.id, name: coach.name, role: 'coach' as const, title: '运动康复师' }] : []),
+          ...(dietitian ? [{ id: dietitian.id, name: dietitian.name, role: 'dietitian' as const, title: '营养师' }] : []),
+        ],
+        messages: [{ id: `msg_${Date.now()}`, threadId: '', senderId: 'system', senderName: '随访助手', senderRole: 'system', date: now, kind: 'system', text: '团队随访会话已建立，消息将同步至健康档案。' }],
+      };
+      thread.messages[0].threadId = thread.id;
+      chatThreads.value.push(thread);
+    }
+    openChatThread(thread.id);
+  }
+
+  function sendChatMessage(threadId: string, text: string) {
+    const t = text.trim();
+    const thread = getChatThread(threadId);
+    const u = user.value;
+    if (!t || !thread || !u) return;
+    const now = formatDateTimeStr();
+    const message: ChatMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      threadId,
+      senderId: u.id,
+      senderName: u.role === 'student' ? u.name : `${u.name} ${u.role === 'doctor' ? '医师' : u.role === 'coach' ? '康复师' : '营养师'}`,
+      senderRole: u.role,
+      text: t,
+      date: now,
+    };
+    thread.messages.push(message);
+    thread.updatedAt = now;
+    thread.lastReadAtByUser = { ...(thread.lastReadAtByUser || {}), [u.id]: now };
+  }
+
+  /** 仅演示用：学员发出消息后由团队值班人员给出一次安全回复 */
+  function sendDemoTeamReply(threadId: string) {
+    const thread = getChatThread(threadId);
+    if (!thread || user.value?.role !== 'student') return;
+    const now = formatDateTimeStr();
+    thread.messages.push({
+      id: `msg_reply_${Date.now()}`,
+      threadId,
+      senderId: 'dr1',
+      senderName: '周明远 医师',
+      senderRole: 'doctor',
+      date: now,
+      text: '收到，我已同步查看。请先静坐 5 分钟后复测血压；如出现胸痛、晕厥或明显气短，立即停止活动并联系团队或拨打 120。',
+    });
+    thread.updatedAt = now;
+  }
+
+  // ─── 心血管运动处方共享状态 ────────────────────────────────
+  function getStudentPrescription(studentId: string, campId?: string | null): CardioPrescription | null {
+    const camp = campId || getStudentCampId(studentId);
+    const list = prescriptions.value
+      .filter((p) => p.studentId === studentId && (!camp || p.campId === camp))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return list.find((p) => p.status === 'signed') || list.find((p) => p.status === 'pending_doctor') || null;
+  }
+
+  function getPendingPrescriptions(campId?: string | null): CardioPrescription[] {
+    const scope = campId ? [campId] : currentStaffCampIds();
+    return prescriptions.value
+      .filter((p) => p.status === 'pending_doctor' && scope.includes(p.campId))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  function submitCardioPrescription(input: Omit<CardioPrescription, 'id' | 'status' | 'createdAt' | 'coachId' | 'doctorId' | 'signedAt'>) {
+    const u = user.value;
+    if (!u || u.role !== 'coach') return null;
+    const record: CardioPrescription = {
+      ...input,
+      id: `rx_${input.studentId}_${Date.now()}`,
+      coachId: u.id,
+      status: 'pending_doctor',
+      createdAt: formatDateTimeStr(),
+    };
+    prescriptions.value = prescriptions.value.filter((p) =>
+      !(p.studentId === input.studentId && p.campId === input.campId && p.status === 'pending_doctor')
+    );
+    prescriptions.value.unshift(record);
+    return record;
+  }
+
+  function signCardioPrescription(id: string) {
+    const u = user.value;
+    if (!u || u.role !== 'doctor') return false;
+    const rx = prescriptions.value.find((p) => p.id === id);
+    if (!rx || rx.status !== 'pending_doctor') return false;
+    rx.status = 'signed';
+    rx.doctorId = u.id;
+    rx.signedAt = formatDateTimeStr();
+    return true;
+  }
+
+  function rejectCardioPrescription(id: string) {
+    const u = user.value;
+    if (!u || u.role !== 'doctor') return false;
+    const rx = prescriptions.value.find((p) => p.id === id);
+    if (!rx || rx.status !== 'pending_doctor') return false;
+    rx.status = 'rejected';
+    rx.doctorId = u.id;
+    return true;
   }
 
   function openImagePreview(urls: string[], index: number = 0) {
@@ -1023,6 +1300,113 @@ export const useAppStore = defineStore('app', () => {
   const manualScoreRecords = ref<ManualScoreRecord[]>([...MOCK_MANUAL_SCORES]);
 
   // ============================================================================
+  //  多角色在线随访 / 运动处方（同一浏览器内跨账号共享）
+  // ============================================================================
+  const chatThreads = ref<ChatThread[]>([
+    {
+      id: 'ct_s1_camp1',
+      campId: 'camp1',
+      studentId: 's1',
+      title: '李明 · 心脑血管团队随访',
+      topic: '第 2 周 · 血压控制与运动处方复核',
+      updatedAt: relativeDateTime(20),
+      lastReadAtByUser: { s1: relativeDateTime(70), dr1: relativeDateTime(18), c1: relativeDateTime(18), d1: relativeDateTime(18) },
+      members: [
+        { id: 's1', name: '李明', role: 'student', title: '学员' },
+        { id: 'dr1', name: '周明远', role: 'doctor', title: '主管医师 · 心血管内科' },
+        { id: 'c1', name: '李教练', role: 'coach', title: '运动康复师' },
+        { id: 'd1', name: '王营养师', role: 'dietitian', title: '营养师' },
+      ],
+      messages: [
+        { id: 'msg_s1_1', threadId: 'ct_s1_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(65), text: '您好，我是您的主管医师。已查看近一周家庭血压，平均值较入营时下降，先维持当前方案。' },
+        { id: 'msg_s1_2', threadId: 'ct_s1_camp1', senderId: 'system', senderName: '随访助手', senderRole: 'system', date: relativeDateTime(64), kind: 'system', text: '本次随访将同步至健康档案并全程留痕。互联网医院正式问诊需跳转第三方平台。' },
+        { id: 'msg_s1_3', threadId: 'ct_s1_camp1', senderId: 's1', senderName: '李明', senderRole: 'student', date: relativeDateTime(50), text: '今天晨起血压 132/84，快走 25 分钟，能完整说话，没有胸闷。' },
+        { id: 'msg_s1_4', threadId: 'ct_s1_camp1', senderId: 'd1', senderName: '王营养师', senderRole: 'dietitian', date: relativeDateTime(24), text: '饮食整体合格。今天晚餐注意少盐，酱料和加工肉先暂停，绿叶菜保持一份。' },
+        { id: 'msg_s1_5', threadId: 'ct_s1_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(20), text: '运动强度维持 RPE 11–13，不要追求大汗或冲刺。若出现胸痛、晕厥或血压持续 ≥180/110，立即停止并联系团队。' },
+      ],
+    },
+    {
+      id: 'ct_s2_camp1',
+      campId: 'camp1',
+      studentId: 's2',
+      title: '王丽 · 心脑血管团队随访',
+      topic: '颈动脉斑块 · 血脂与低盐饮食',
+      updatedAt: relativeDateTime(8),
+      lastReadAtByUser: { s2: relativeDateTime(30) },
+      members: [
+        { id: 's2', name: '王丽', role: 'student', title: '学员' },
+        { id: 'dr1', name: '周明远', role: 'doctor', title: '主管医师 · 心血管内科' },
+        { id: 'c1', name: '李教练', role: 'coach', title: '运动康复师' },
+        { id: 'd1', name: '王营养师', role: 'dietitian', title: '营养师' },
+      ],
+      messages: [
+        { id: 'msg_s2_1', threadId: 'ct_s2_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(18), text: '血脂复查 LDL-C 2.5 mmol/L，已达到高危人群目标附近。继续按处方服药，不要自行停用他汀。' },
+        { id: 'msg_s2_2', threadId: 'ct_s2_camp1', senderId: 'd1', senderName: '王营养师', senderRole: 'dietitian', date: relativeDateTime(8), text: '今天午餐的蔬菜很好，汤和咸菜尽量少喝少吃。服用他汀期间不要大量喝西柚汁。' },
+      ],
+    },
+    {
+      id: 'ct_s3_camp1',
+      campId: 'camp1',
+      studentId: 's3',
+      title: '张伟 · 心脑血管团队随访',
+      topic: '血压预警 · 运动暂缓待医师复核',
+      updatedAt: relativeDateTime(3),
+      lastReadAtByUser: { s3: relativeDateTime(90) },
+      members: [
+        { id: 's3', name: '张伟', role: 'student', title: '学员' },
+        { id: 'dr1', name: '周明远', role: 'doctor', title: '主管医师 · 心血管内科' },
+        { id: 'c1', name: '李教练', role: 'coach', title: '运动康复师' },
+        { id: 'd1', name: '王营养师', role: 'dietitian', title: '营养师' },
+      ],
+      messages: [
+        { id: 'msg_s3_1', threadId: 'ct_s3_camp1', senderId: 'system', senderName: '随访助手', senderRole: 'system', date: relativeDateTime(12), kind: 'alert', text: '连续 3 天晨起血压 ≥160/95，已触发风险预警。' },
+        { id: 'msg_s3_2', threadId: 'ct_s3_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(3), text: '今天先暂停中高强度运动，静坐 5 分钟后复测血压。如仍 ≥180/110，或伴胸痛、气短、视物模糊，请立即到院。' },
+      ],
+    },
+  ]);
+
+  const prescriptions = ref<CardioPrescription[]>([
+    {
+      id: 'rx_s1_camp1',
+      campId: 'camp1',
+      studentId: 's1',
+      coachId: 'c1',
+      doctorId: 'dr1',
+      status: 'signed',
+      mode: '室内快走 + 弹力带轻阻力训练',
+      intensity: '低至中等强度，RPE 11–13',
+      frequency: '5 次/周',
+      duration: '20–30 分钟，可拆成 2 段',
+      targetHr: '88–105 次/分（以能完整说句子为准）',
+      rpe: '11–13（轻到稍累）',
+      warmup: '热身 5 分钟：慢走 + 踝泵 + 肩部活动',
+      cooldown: '放松 5 分钟：慢走 + 小腿拉伸，避免突然停下',
+      stopSigns: '胸痛、胸闷、晕厥、明显心悸、异常气短或血压 ≥180/110 时立即停止',
+      note: '服药后 1 小时内避免突然加大强度；高温天气改为室内。',
+      createdAt: relativeDateTime(1500),
+      signedAt: relativeDateTime(1440),
+    },
+    {
+      id: 'rx_s3_camp1',
+      campId: 'camp1',
+      studentId: 's3',
+      coachId: 'c1',
+      status: 'pending_doctor',
+      mode: '室内步行 + 呼吸训练',
+      intensity: '低强度，RPE 9–11',
+      frequency: '医师复核前暂不安排',
+      duration: '10–15 分钟',
+      targetHr: '待医师确认',
+      rpe: '9–11（很轻到轻）',
+      warmup: '静坐 5 分钟后测血压，再慢走 3 分钟',
+      cooldown: '慢走 3 分钟 + 腹式呼吸 5 分钟',
+      stopSigns: '胸痛、胸闷、头晕、视物模糊或血压 ≥180/110 立即停止',
+      note: '近期家庭血压连续偏高，先由医师排除运动禁忌。',
+      createdAt: relativeDateTime(45),
+    },
+  ]);
+
+  // ============================================================================
   //  业务数据 localStorage 持久化（纯前端 demo：业务数据默认只在内存，刷新/跨会话即丢）
   //  ---------------------------------------------------------------------------
   //  用一个快照桶把主要可变业务数据统一写进 localStorage，并在 init() 时回读，
@@ -1030,20 +1414,19 @@ export const useAppStore = defineStore('app', () => {
   //  修复"营养师发货后学员端仍显示待发货/无发货消息"的断链。
   //  边界：demo 无共享后端，跨浏览器/设备仍无法同步；这里仅解决"同浏览器刷新/换号"的丢数。
   // ============================================================================
-  const BIZ_KEY = 'camp_biz_data_versionall';
   const bizSources = [
     students, weightRecords, exerciseRecords, dietRecords, coachActivities,
     rewardTiers, rewardClaims, unlockRecords, campMessageList, metricConfigs, camps, accounts,
     pointProducts, pointExchanges, manualScoreRecords,
     activityConfigByCamp, mealTimeConfigByCamp,
-    badgeConfigsByCamp, badgeRecords,
+    badgeConfigsByCamp, badgeRecords, chatThreads, prescriptions,
   ];
   const bizNames = [
     'students', 'weightRecords', 'exerciseRecords', 'dietRecords', 'coachActivities',
     'rewardTiers', 'rewardClaims', 'unlockRecords', 'campMessageList', 'metricConfigs', 'camps', 'accounts',
     'pointProducts', 'pointExchanges', 'manualScoreRecords',
     'activityConfigByCamp', 'mealTimeConfigByCamp',
-    'badgeConfigsByCamp', 'badgeRecords',
+    'badgeConfigsByCamp', 'badgeRecords', 'chatThreads', 'prescriptions',
   ] as const;
   function persistBiz() {
     const snap: Record<string, unknown> = {};
@@ -1069,7 +1452,12 @@ export const useAppStore = defineStore('app', () => {
     MOCK_ACCOUNTS.forEach((a) => {
       const hit = accounts.value.find((x) => x.phone === a.phone && x.role === a.role);
       if (!hit) accounts.value.push({ ...a });
-      else if (a.supervisor && !hit.supervisor) hit.supervisor = true;
+      else {
+        if (a.supervisor && !hit.supervisor) hit.supervisor = true;
+        if (a.organization && !hit.organization) hit.organization = a.organization;
+        if (a.adminLevel && !hit.adminLevel) hit.adminLevel = a.adminLevel;
+        if (!hit.campIds?.length && a.campIds?.length) hit.campIds = [...a.campIds];
+      }
     });
     // 记录：清掉未来/开营前脏数据；v3 起用线性体重历史替换体验学员第一期旧体重
     if (fromVersion < 4) {
@@ -1299,7 +1687,7 @@ export const useAppStore = defineStore('app', () => {
       const d = (e.status === 'fulfilled' && e.shipDate) || e.exchangeDate;
       if (systemMsgUnread(seen, d, `exch-${e.id}`)) sys++;
     }
-    return batch + sys;
+    return batch + sys + getStudentChatUnreadCount(studentId);
   }
 
   /** 更新兑换状态（含审计留痕）。
@@ -1664,6 +2052,61 @@ export const useAppStore = defineStore('app', () => {
       });
   }
 
+  function getDoctorCamps(): Camp[] {
+    if (!user.value || user.value.role !== 'doctor') return [];
+    const account = accounts.value.find((a) => a.id === user.value!.id || a.phone === user.value!.phone);
+    if (!account?.campIds || account.campIds.length === 0) return camps.value;
+    return camps.value.filter((c) => account.campIds!.includes(c.id));
+  }
+
+  const CARDIO_CONDITIONS: Record<string, string> = {
+    s1: '高血压 · LDL-C 偏高',
+    s2: '颈动脉斑块 · 血脂异常',
+    s3: '高血压 2 级 · 超重',
+    s4: '高血压稳定期 · 运动康复',
+    s6: '冠心病稳定期 · 高血压',
+    s10: '高血压 · 糖代谢异常',
+    s12: '高脂血症 · 颈动脉斑块',
+  };
+
+  /** 医师端患者列表：只返回当前医师负责营期内的患者，并按血压/血脂分层 */
+  function getDoctorPatients(campId?: string | null) {
+    const allowedCamps = getDoctorCamps().map((c) => c.id);
+    const scope = campId ? [campId] : allowedCamps;
+    return accounts.value
+      .filter((a) => a.role === 'student' && a.active && a.campIds?.some((id) => scope.includes(id)))
+      .map((a) => {
+        const cid = a.campIds?.find((id) => scope.includes(id)) || scope[0];
+        const values = metricValuesFor(a.id, cid) || {};
+        const val = (key: string) => {
+          const item = values[key];
+          return Number(item?.afterValue ?? item?.beforeValue ?? 0) || 0;
+        };
+        const sbp = val('mc_cv_sbp');
+        const dbp = val('mc_cv_dbp');
+        const ldl = val('mc_bl_ldl');
+        let score = 0;
+        if (sbp >= 160 || dbp >= 100) score += 2;
+        else if (sbp >= 140 || dbp >= 90) score += 1;
+        if (ldl >= 4.1) score += 2;
+        else if (ldl >= 3.4) score += 1;
+        const info = students.value.find((s) => s.id === a.id);
+        return {
+          id: a.id,
+          name: a.name,
+          phone: a.phone,
+          age: info?.age || 55,
+          gender: info?.gender,
+          campId: cid,
+          risk: score >= 3 ? '高' as const : score >= 1 ? '中' as const : '低' as const,
+          bp: sbp && dbp ? `${sbp}/${dbp}` : '--',
+          ldl: ldl ? ldl.toFixed(1) : '--',
+          hr: val('mc_cv_hr') || '--',
+          condition: CARDIO_CONDITIONS[a.id] || '心血管风险随访',
+        };
+      });
+  }
+
   /** 获取指定营期的学员列表（从 accounts 中筛选 campIds 包含该营期且 active 的学员） */
   function getStudentsByCamp(campId: string): { id: string; name: string; phone: string; gender?: 'male' | 'female'; age?: number }[] {
     return accounts.value
@@ -1728,6 +2171,26 @@ export const useAppStore = defineStore('app', () => {
     coachActivities,
     getCampCoachActivities,
     selectedStudentId,
+    selectedChatThreadId,
+    chatThreads,
+    prescriptions,
+    getMyChatThreads,
+    getChatThread,
+    getStudentChatThread,
+    getChatUnreadCount,
+    getMyChatUnreadCount,
+    getStudentChatUnreadCount,
+    markChatRead,
+    setSelectedChatThreadId,
+    openChatThread,
+    openChatForStudent,
+    sendChatMessage,
+    sendDemoTeamReply,
+    getStudentPrescription,
+    getPendingPrescriptions,
+    submitCardioPrescription,
+    signCardioPrescription,
+    rejectCardioPrescription,
     selectedDateStr,
     attendanceBoardDate,
     coachFocusRecordId,
@@ -1831,6 +2294,8 @@ export const useAppStore = defineStore('app', () => {
     getAllStudents,
     getCoachCamps,
     getCoachStudents,
+    getDoctorCamps,
+    getDoctorPatients,
     getStudentCampId,
     getStudentCamps,
     pickLatestCamp,

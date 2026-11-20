@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { format } from 'date-fns';
 import { useAppStore } from '../store/app';
 import { NavBar, StudentTabbar } from './ui';
-import { MessageCircle, Gift, Trophy, Bell, ChevronRight, Activity, RefreshCw } from 'lucide-vue-next';
+import { MessageCircle, Gift, Trophy, Bell, ChevronRight, Activity, RefreshCw, Stethoscope } from 'lucide-vue-next';
 import { useTabSwipe } from '../lib/useTabSwipe';
 import { usePaged } from '../composables/usePaged';
 import { useDebounced } from '../composables/useDebounced';
@@ -53,16 +53,17 @@ const campTiers = computed(() => activeCampId.value ? store.getCampRewardTiers(a
 
 interface MessageItem {
   id: string;
-  type: 'dietitian' | 'coach' | 'reward' | 'rank';
+  type: 'chat' | 'dietitian' | 'coach' | 'reward' | 'rank';
   date: string; // yyyy-MM-dd HH:mm:ss
   title: string;
   body: string;
   unread: boolean;
-  targetView: 'diet' | 'exercise' | 'weight-checkin' | 'reward' | 'ranking' | 'camp-activities' | 'points-mall' | 'my-rewards';
+  targetView: 'diet' | 'exercise' | 'weight-checkin' | 'reward' | 'ranking' | 'camp-activities' | 'points-mall' | 'my-rewards' | 'online-chat';
   targetDate?: string; // yyyy-MM-dd for scroll-to-record
   recType?: 'diet' | 'weight' | 'exercise'; // 批注消息：点开时按此清该条 commentRead
   recordId?: string; // 批注消息对应记录 id
   notifId?: string; // 系统通知消息：点开时按此记已读
+  chatThreadId?: string;
 }
 
 // ---- 批注消息（营养师：饮食/体重；教练：运动） ----
@@ -96,6 +97,27 @@ const commentMessages = computed<MessageItem[]>(() => {
     ...campWtRecs.value.filter((r) => isMine(r) && r.dietitianComment).map((r) => dietitianWrap(r, 'weight')),
     ...campExRecs.value.filter((r) => isMine(r) && r.coachComment).map((r) => coachWrap(r)),
   ];
+});
+
+// ---- 团队在线随访：每位学员一条会话，医生/康复师/营养师的消息共用同一入口 ----
+const chatMessages = computed<MessageItem[]>(() => {
+  const uid = store.user?.id;
+  if (!uid) return [];
+  return store.getMyChatThreads()
+    .filter((t) => t.studentId === uid && t.messages.length > 0)
+    .map((t) => {
+      const latest = t.messages[t.messages.length - 1];
+      return {
+        id: `chat-${t.id}-${latest.id}`,
+        type: 'chat' as const,
+        date: latest.date,
+        title: latest.senderRole === 'system' ? '团队随访提醒' : `${latest.senderName} 在团队随访中回复`,
+        body: latest.text,
+        unread: store.getChatUnreadCount(t, uid) > 0,
+        targetView: 'online-chat' as const,
+        chatThreadId: t.id,
+      };
+    });
 });
 
 // ---- 奖励消息（领取/审核/发货/线下发放，计入「系统通知」未读） ----
@@ -155,9 +177,9 @@ const exchangeMessages = computed<MessageItem[]>(() => {
 
 // ---- 汇总排序 ----
 // 同一时间按优先级：批注 > 奖励/兑换（排名动态不再推送消息到消息中心）
-const typePriority: Record<string, number> = { dietitian: 0, coach: 0, reward: 1 };
+const typePriority: Record<string, number> = { chat: 0, dietitian: 0, coach: 0, reward: 1 };
 const allMessages = computed<MessageItem[]>(() =>
-  [...commentMessages.value, ...rewardMessages.value, ...exchangeMessages.value]
+  [...chatMessages.value, ...commentMessages.value, ...rewardMessages.value, ...exchangeMessages.value]
     .sort((a, b) => {
       const dc = b.date.localeCompare(a.date);
       if (dc !== 0) return dc;
@@ -168,13 +190,14 @@ const allMessages = computed<MessageItem[]>(() =>
 // ---- 分类筛选：营养师批注 / 教练批注 / 系统通知 ----
 const filters = [
   { key: 'all', label: '全部' },
-  { key: 'dietitian', label: '营养师批注' },
-  { key: 'coach', label: '康复师批注' },
+  { key: 'chat', label: '医护随访' },
+  { key: 'dietitian', label: '营养师' },
+  { key: 'coach', label: '康复师' },
   { key: 'reward', label: '系统通知' },
 ];
 const activeFilter = ref<string>('all');
 const sheetRoot = ref<HTMLElement | null>(null);
-useTabSwipe(sheetRoot, activeFilter, ['all', 'dietitian', 'coach', 'reward']);
+useTabSwipe(sheetRoot, activeFilter, ['all', 'chat', 'dietitian', 'coach', 'reward']);
 const messages = computed<MessageItem[]>(() =>
   activeFilter.value === 'all'
     ? allMessages.value
@@ -184,7 +207,7 @@ const messages = computed<MessageItem[]>(() =>
 // 未读数 = 批注(营养师+教练) + 系统通知(奖励/兑换)，与各学员页底部「消息」Tab 角标口径一致
 // （共享 store.getStudentMsgUnreadCount / lib/messageSeen）。排名动态不进入角标。
 const unreadCount = computed(() =>
-  allMessages.value.filter((m) => m.unread && (m.type === 'dietitian' || m.type === 'coach' || m.type === 'reward')).length,
+  allMessages.value.filter((m) => m.unread && (m.type === 'chat' || m.type === 'dietitian' || m.type === 'coach' || m.type === 'reward')).length,
 );
 // 长列表分页 + 防抖：默认只渲染前 20 条；打卡/批注等高频变化时列表重建合并为一次
 const debouncedMessages = useDebounced(messages, 300);
@@ -200,7 +223,9 @@ const tabUnread = (key: string): number =>
 const sheetUnread = computed(() => tabUnread(activeFilter.value));
 
 const typeMeta = (type: MessageItem['type']) =>
-  type === 'dietitian'
+  type === 'chat'
+    ? { icon: Stethoscope, cls: 'bg-blue-50 text-[#0B5FD7]', tag: '医护随访', tagCls: 'bg-blue-50 text-[#0B5FD7]' }
+    : type === 'dietitian'
     ? { icon: MessageCircle, cls: 'bg-[#0B5FD7]/10 text-[#0B5FD7]', tag: '营养师批注', tagCls: 'bg-[#0B5FD7]/10 text-[#0B5FD7]' }
     : type === 'coach'
       ? { icon: Activity, cls: 'bg-sky-50 text-sky-500', tag: '康复师批注', tagCls: 'bg-sky-50 text-sky-500' }
@@ -209,6 +234,10 @@ const typeMeta = (type: MessageItem['type']) =>
         : { icon: Trophy, cls: 'bg-yellow-50 text-yellow-600', tag: '排名动态', tagCls: 'bg-yellow-50 text-yellow-600' };
 
 const openMessage = (m: MessageItem) => {
+  if (m.chatThreadId) {
+    store.openChatThread(m.chatThreadId);
+    return;
+  }
   // 点开才读才清：批注清该记录 commentRead，系统通知记该 notifId 已读
   if (m.recType && m.recordId) {
     store.markCommentRead(m.recType, m.recordId);
@@ -264,7 +293,7 @@ const fmtDate = (d: string) => {
           v-for="f in filters"
           :key="f.key"
           @click="activeFilter = f.key"
-          :class="['flex-1 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center justify-center gap-1 min-w-0', activeFilter === f.key ? 'bg-[#0B5FD7] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700']"
+          :class="['flex-1 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all flex items-center justify-center gap-0.5 min-w-0', activeFilter === f.key ? 'bg-[#0B5FD7] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700']"
         >
           <span class="truncate">{{ f.label }}</span>
           <span
@@ -289,7 +318,7 @@ const fmtDate = (d: string) => {
           <Bell class="w-8 h-8 text-gray-300" />
         </div>
         <div class="text-sm font-bold text-gray-600 mb-1">暂无消息</div>
-        <div class="text-xs text-gray-400">营养师/康复师的批注和系统通知会出现在这里</div>
+        <div class="text-xs text-gray-400">医护团队随访、营养师/康复师批注和系统通知会出现在这里</div>
       </div>
 
       <!-- 消息列表 -->

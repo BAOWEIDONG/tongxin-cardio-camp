@@ -133,6 +133,9 @@ const commentScore = ref<0 | 1 | 2 | null>(null);
 const commentStaple = ref(false);
 const commentProtein = ref(false);
 const commentVegetable = ref(false);
+const commentLowSalt = ref(false);
+const commentLowOil = ref(false);
+const commentWholeGrain = ref(false);
 
 // Exercise tab - filtered by studentId AND campId
 const studentExercises = computed(() =>
@@ -345,6 +348,9 @@ const startComment = (record: DietRecord) => {
   commentStaple.value = !!record.hasStaple;
   commentProtein.value = !!record.hasProtein;
   commentVegetable.value = !!record.hasVegetable;
+  commentLowSalt.value = !!record.lowSalt;
+  commentLowOil.value = !!record.lowOil;
+  commentWholeGrain.value = !!record.wholeGrain;
 };
 
 const cancelComment = () => {
@@ -355,6 +361,9 @@ const cancelComment = () => {
   commentStaple.value = false;
   commentProtein.value = false;
   commentVegetable.value = false;
+  commentLowSalt.value = false;
+  commentLowOil.value = false;
+  commentWholeGrain.value = false;
 };
 
 const handleSaveComment = (recordId: string) => {
@@ -373,6 +382,9 @@ const handleSaveComment = (recordId: string) => {
     hasStaple: commentStaple.value,
     hasProtein: commentProtein.value,
     hasVegetable: commentVegetable.value,
+    lowSalt: commentLowSalt.value,
+    lowOil: commentLowOil.value,
+    wholeGrain: commentWholeGrain.value,
   });
   releaseLock('diet', recordId);
   cancelComment();
@@ -655,11 +667,14 @@ function handleDeleteManualScore(id: string) {
               <p class="text-sm text-gray-900 mb-3 whitespace-pre-wrap">{{ record.description }}</p>
 
               <!-- 餐次结构标签（营养师评定，保存后展示；未评定时不显示） -->
-              <div v-if="record.hasStaple || record.hasProtein || record.hasVegetable" class="flex flex-wrap gap-1.5 mb-3">
+              <div v-if="record.hasStaple || record.hasProtein || record.hasVegetable || record.lowSalt || record.lowOil || record.wholeGrain" class="flex flex-wrap gap-1.5 mb-3">
                 <span class="text-[10px] text-gray-400 self-center">已评定:</span>
                 <span v-if="record.hasStaple" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium">🍚 主食</span>
                 <span v-if="record.hasProtein" class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 font-medium">🥩 蛋白质</span>
                 <span v-if="record.hasVegetable" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 font-medium">🥬 蔬菜</span>
+                <span v-if="record.lowSalt" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-[#0B5FD7] font-medium">🧂 低盐</span>
+                <span v-if="record.lowOil" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 font-medium">🫒 少油</span>
+                <span v-if="record.wholeGrain" class="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 font-medium">🌾 全谷物</span>
               </div>
 
               <div class="flex gap-2 overflow-x-auto pb-1">
@@ -721,6 +736,20 @@ function handleDeleteManualScore(id: string) {
                       @click="commentVegetable = !commentVegetable"
                       :class="['flex-1 py-2 rounded-lg text-xs font-medium transition-all active:scale-95', commentVegetable ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200']"
                     >🥬 蔬菜</button>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      @click="commentLowSalt = !commentLowSalt"
+                      :class="['flex-1 py-2 rounded-lg text-xs font-medium transition-all active:scale-95', commentLowSalt ? 'bg-[#0B5FD7] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200']"
+                    >🧂 低盐</button>
+                    <button
+                      @click="commentLowOil = !commentLowOil"
+                      :class="['flex-1 py-2 rounded-lg text-xs font-medium transition-all active:scale-95', commentLowOil ? 'bg-sky-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200']"
+                    >🫒 少油</button>
+                    <button
+                      @click="commentWholeGrain = !commentWholeGrain"
+                      :class="['flex-1 py-2 rounded-lg text-xs font-medium transition-all active:scale-95', commentWholeGrain ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200']"
+                    >🌾 全谷物</button>
                   </div>
                 </div>
                 <!-- 快捷回复模板 -->

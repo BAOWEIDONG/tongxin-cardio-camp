@@ -6,7 +6,7 @@ import { NavBar, Card } from './ui';
 import { Popup as VanPopup, showToast, showConfirmDialog, Switch as VanSwitch } from 'vant';
 import {
   Plus, Trash2, Edit3, Users, UserCircle, Dumbbell, Stethoscope, Leaf,
-  Phone, Search, X, Settings2, UserPlus, ShieldCheck, ShieldOff,
+  Phone, Search, X, Settings2, UserPlus, ShieldCheck, ShieldOff, LockKeyhole,
 } from 'lucide-vue-next';
 import type { Account, Camp, Role } from '../types';
 
@@ -14,6 +14,32 @@ const store = useAppStore();
 
 // ─── Tab 切换 ───
 const activeTab = ref<Role>('student');
+const isPlatformAdmin = computed(() => store.user?.adminLevel === 'platform' || store.user?.supervisor === true);
+const myAccount = computed(() =>
+  store.accounts.find((a) => a.id === store.user?.id || a.phone === store.user?.phone),
+);
+const scopedCampIds = computed(() => {
+  if (isPlatformAdmin.value) return store.camps.map((c) => c.id);
+  return myAccount.value?.campIds || [];
+});
+const visibleCamps = computed(() => {
+  if (isPlatformAdmin.value) return store.camps;
+  return store.camps.filter((c) => scopedCampIds.value.includes(c.id));
+});
+const scopedAccounts = computed(() => {
+  if (isPlatformAdmin.value) return store.accounts;
+  const org = store.user?.organization;
+  return store.accounts.filter((a) => {
+    if (a.id === store.user?.id) return true;
+    if (a.campIds?.length) return a.campIds.some((id) => scopedCampIds.value.includes(id));
+    return !!org && a.organization === org;
+  });
+});
+const permissionLabel = computed(() => {
+  if (store.user?.adminLevel === 'platform' || store.user?.supervisor) return '一级管理 · 国际医院平台';
+  if (store.user?.adminLevel === 'org') return '二级操作 · 医院/机构';
+  return '仅个人工作台权限';
+});
 const tabs: { role: Role; label: string; icon: typeof Users; color: string }[] = [
   { role: 'student', label: '学员', icon: UserCircle, color: '#0B5FD7' },
   { role: 'coach', label: '康复师', icon: Dumbbell, color: '#FF976A' },
@@ -49,7 +75,7 @@ const accountFormError = ref('');
 
 // ─── 计算属性 ───
 const filteredAccounts = computed(() => {
-  let list = store.accounts.filter((a) => a.role === activeTab.value);
+  let list = scopedAccounts.value.filter((a) => a.role === activeTab.value);
   // 学员 tab 下按营期筛选
   if (activeTab.value === 'student' && filterCampId.value !== 'all') {
     list = list.filter((a) => a.campIds?.includes(filterCampId.value));
@@ -69,10 +95,10 @@ const { items: pagedAccounts, hasMore, remaining, loadMore, reset: resetPagedAcc
 watch([activeTab, filterCampId, searchKeyword], () => resetPagedAccounts());
 
 const roleCount = computed(() => ({
-  student: store.accounts.filter((a) => a.role === 'student').length,
-  coach: store.accounts.filter((a) => a.role === 'coach').length,
-  doctor: store.accounts.filter((a) => a.role === 'doctor').length,
-  dietitian: store.accounts.filter((a) => a.role === 'dietitian').length,
+  student: scopedAccounts.value.filter((a) => a.role === 'student').length,
+  coach: scopedAccounts.value.filter((a) => a.role === 'coach').length,
+  doctor: scopedAccounts.value.filter((a) => a.role === 'doctor').length,
+  dietitian: scopedAccounts.value.filter((a) => a.role === 'dietitian').length,
 }));
 
 const campNameMap = computed(() => {
@@ -147,13 +173,20 @@ const saveCamp = () => {
       status,
     });
   } else {
+    const newCampId = `camp_${Date.now()}`;
     store.addCamp({
-      id: `camp_${Date.now()}`,
+      id: newCampId,
       name: editingCamp.value.name.trim(),
       startDate: editingCamp.value.startDate || undefined,
       endDate: editingCamp.value.endDate || undefined,
       status,
     });
+    // 二级机构新开的营期自动归入本机构管理员负责范围，避免创建后不可见
+    if (!isPlatformAdmin.value && myAccount.value) {
+      store.updateAccount(myAccount.value.id, {
+        campIds: [...(myAccount.value.campIds || []), newCampId],
+      });
+    }
   }
   showCampModal.value = false;
 };
@@ -196,7 +229,7 @@ const saveAccount = () => {
   if (!editingAccount.value) return;
   const { phone, name, role, campIds, active } = editingAccount.value;
   // 运营总览权限：仅当前督导可授予/收回，且只对营养师账号有意义
-  const canGrant = store.user?.supervisor === true;
+  const canGrant = store.user?.supervisor === true || store.user?.adminLevel === 'platform';
   const supervisorFlag = role === 'dietitian' ? editingAccount.value.supervisor === true : false;
 
   if (!phone?.trim()) {
@@ -257,6 +290,7 @@ const saveAccount = () => {
       phone: phone.trim(),
       name: name?.trim() || '',
       role: role as Role,
+      organization: store.user?.organization,
       campIds: (role === 'student' || role === 'coach' || role === 'doctor') ? campIds : undefined,
       active: active ?? true,
       supervisor: canGrant ? supervisorFlag : false,
@@ -295,6 +329,16 @@ const switchTab = (role: Role) => {
 
     <div class="flex-1 p-4 space-y-4 pb-24">
       <!-- 说明 -->
+      <div class="flex items-center justify-between rounded-xl border border-[#0B5FD7]/15 bg-white px-3 py-2.5">
+        <div>
+          <div class="text-[10px] text-gray-400">当前登录权限</div>
+          <div class="mt-0.5 text-xs font-bold text-[#0B5FD7]">{{ permissionLabel }}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] text-gray-400">所属机构</div>
+          <div class="mt-0.5 text-[11px] font-semibold text-gray-700">{{ store.user?.organization || '未设置' }}</div>
+        </div>
+      </div>
       <div class="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl p-3">
         <ShieldCheck class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
         <div class="text-xs text-blue-700 leading-relaxed">
@@ -305,6 +349,12 @@ const switchTab = (role: Role) => {
         <Settings2 class="w-4 h-4 text-[#FF976A] shrink-0 mt-0.5" />
         <div class="text-[11px] text-gray-500 leading-relaxed">
           分级管理：商城兑换、活动开关等平台规则由国际医院统一配置；医院/机构仅可配置本机构人员账号与开营批次。
+        </div>
+      </div>
+      <div v-if="!isPlatformAdmin" class="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+        <LockKeyhole class="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+        <div class="text-[11px] leading-relaxed text-gray-500">
+          当前为二级机构操作权限，只能看到本机构负责的营期与人员。积分兑换、小红花规则、活动总开关、兑付中心由北大国际医院一级平台统一配置，本账号不可修改。
         </div>
       </div>
 
@@ -324,7 +374,7 @@ const switchTab = (role: Role) => {
         </div>
         <div class="flex gap-2 overflow-x-auto pb-1">
           <Card
-            v-for="camp in store.camps"
+            v-for="camp in visibleCamps"
             :key="camp.id"
             class="p-3 shrink-0 w-36 cursor-pointer hover:shadow-md transition-shadow"
             @click="handleEditCamp(camp)"
@@ -342,7 +392,7 @@ const switchTab = (role: Role) => {
               {{ store.accounts.filter(a => a.role === 'student' && a.campIds?.includes(camp.id)).length }} 名学员
             </div>
           </Card>
-          <div v-if="store.camps.length === 0" class="text-xs text-gray-400 py-4 text-center w-full">
+          <div v-if="visibleCamps.length === 0" class="text-xs text-gray-400 py-4 text-center w-full">
             暂无营期，请先新增
           </div>
         </div>
@@ -378,7 +428,7 @@ const switchTab = (role: Role) => {
           全部期
         </button>
         <button
-          v-for="camp in store.camps"
+          v-for="camp in visibleCamps"
           :key="camp.id"
           :class="[
             'shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
@@ -436,14 +486,17 @@ const switchTab = (role: Role) => {
                     <ShieldOff class="w-2.5 h-2.5" /> 已禁用
                   </span>
                   <span v-if="account.supervisor" class="text-[9px] font-medium bg-[#1F4E79]/10 text-[#1F4E79] px-1.5 py-0.5 rounded">运营总览权限</span>
+                  <span v-if="account.adminLevel === 'platform'" class="text-[9px] font-medium bg-[#0B5FD7]/10 text-[#0B5FD7] px-1.5 py-0.5 rounded">一级平台</span>
+                  <span v-else-if="account.adminLevel === 'org'" class="text-[9px] font-medium bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded">二级机构</span>
                 </div>
                 <div class="text-[10px] text-gray-500 flex items-center gap-1 mb-1.5">
                   <Phone class="w-3 h-3" /> {{ maskPhone(account.phone) }}
                 </div>
+                <div v-if="account.organization" class="mb-1.5 text-[10px] text-gray-400">{{ account.organization }}</div>
                 <!-- 学员营期标签 -->
                 <div v-if="(account.role === 'student' || account.role === 'coach' || account.role === 'doctor') && account.campIds && account.campIds.length > 0" class="flex flex-wrap gap-1">
                   <span
-                    v-for="campId in account.campIds"
+                    v-for="campId in (account.campIds || []).filter((id) => visibleCamps.some((c) => c.id === id))"
                     :key="campId"
                     class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#0B5FD7]/10 text-[#0B5FD7]"
                   >
@@ -589,12 +642,12 @@ const switchTab = (role: Role) => {
           <!-- 营期关联（学员/康复师/医师） -->
           <div v-if="editingAccount.role === 'student' || editingAccount.role === 'coach' || editingAccount.role === 'doctor'">
             <label class="text-sm font-medium text-gray-700 block mb-2">{{ editingAccount.role === 'student' ? '所属营期' : '负责营期' }} <span v-if="editingAccount.role === 'student'" class="text-red-500">*</span></label>
-            <div v-if="store.camps.length === 0" class="text-xs text-orange-500 bg-orange-50 rounded-lg p-2.5">
+            <div v-if="visibleCamps.length === 0" class="text-xs text-orange-500 bg-orange-50 rounded-lg p-2.5">
               暂无营期，请先在上方新增营期
             </div>
             <div v-else class="flex flex-wrap gap-2">
               <button
-                v-for="camp in store.camps"
+                v-for="camp in visibleCamps"
                 :key="camp.id"
                 type="button"
                 :class="[
