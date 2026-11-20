@@ -75,21 +75,11 @@ const ROLE_TABS: Record<string, string[]> = {
   doctor: ['doctor-dashboard', 'online-chat'],
 };
 let prefetchedRole = false;
-let prefetchedAll = false;
 function prefetchTabs(role: string) {
   if (prefetchedRole) return;
   prefetchedRole = true;
   const keys = ROLE_TABS[role] || [];
   const go = () => { keys.forEach((k) => { const imp = VIEW_IMPORTERS[k]; if (imp) imp().catch(() => { /* 预取失败忽略 */ }); }); };
-  scheduleIdle(go);
-}
-// 首帧渲染稳定后，空闲预取「全部」视图 chunk：让后续任何页面点击都不再等网络，彻底消除“点页面转圈”
-function prefetchAll() {
-  if (prefetchedAll) return;
-  prefetchedAll = true;
-  const go = () => {
-    Object.values(VIEW_IMPORTERS).forEach((imp) => { try { imp().catch(() => { /* 忽略 */ }); } catch { /* 忽略 */ } });
-  };
   scheduleIdle(go);
 }
 function scheduleIdle(fn: () => void) {
@@ -250,8 +240,6 @@ onMounted(() => {
 
   // 等登录角色确定后再按角色空闲预取底部 tab 页 chunk（登录页不预取，避免误拉）
   watch(() => store.user?.role, (r) => { if (r) prefetchTabs(r); }, { immediate: true });
-  // 首帧渲染 + 初始化完成后，空闲预取全部视图 chunk：后续任何页面点击都不再转圈
-  prefetchAll();
 });
 </script>
 
