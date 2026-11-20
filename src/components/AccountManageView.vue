@@ -301,6 +301,12 @@ const switchTab = (role: Role) => {
           只有配置了手机号的账户才能登录系统。学员需关联营期；医师、康复师、营养师仅可查看所负责营期的学员与记录。
         </div>
       </div>
+      <div class="flex items-start gap-2 bg-white border border-gray-100 rounded-xl p-3">
+        <Settings2 class="w-4 h-4 text-[#FF976A] shrink-0 mt-0.5" />
+        <div class="text-[11px] text-gray-500 leading-relaxed">
+          分级管理：商城兑换、活动开关等平台规则由国际医院统一配置；医院/机构仅可配置本机构人员账号与开营批次。
+        </div>
+      </div>
 
       <!-- 营期管理 -->
       <div>
