@@ -711,11 +711,11 @@ onActivated(() => {
               </div>
             </div>
             <div class="text-xs text-gray-500 font-medium mt-1 truncate">
-              <template v-if="gapToAhead !== null">距前一名差 {{ gapToAhead }} 分</template>
+              <template v-if="gapToAhead !== null">距前一名差 {{ gapToAhead }} 健康值</template>
               <template v-else-if="scoreData?.rank === 1">保持榜首 👑</template>
-              <template v-else>完成打卡即可涨分</template>
+              <template v-else>完成打卡即可涨健康值</template>
             </div>
-            <div class="text-xs text-[#0B5FD7] font-bold mt-0.5 truncate">总计 {{ scoreData?.totalScore || 0 }} 分</div>
+            <div class="text-xs text-[#0B5FD7] font-bold mt-0.5 truncate">总计 {{ scoreData?.totalScore || 0 }} 健康值</div>
           </div>
         </Card>
       </div>
