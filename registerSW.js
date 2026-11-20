@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/tongxin-cardio-camp/sw.js', { scope: '/tongxin-cardio-camp/' })})}
