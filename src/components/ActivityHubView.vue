@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useAppStore } from '../store/app';
-import { ChevronRight, Flower2, Gift, Package, Sparkles } from 'lucide-vue-next';
+import { ChevronRight, Flower2, Gift, Package, Sparkles, HeartPulse, Footprints, Trophy, Share2, Radio, CalendarDays } from 'lucide-vue-next';
 import { StudentTabbar } from './ui';
 import { calculateStreak } from '../lib/streak';
-import { Popup as VanPopup } from 'vant';
+import { Popup as VanPopup, showToast } from 'vant';
 
 const store = useAppStore();
 
@@ -64,11 +64,11 @@ const prizePool = computed<PrizePoolItem[]>(() => {
       if (!isMilestone && !isWeekly && !cfg.luckyDraw) continue; // 全勤抽奖
       items.push({
         id: t.id, name: t.name, imageUrl: t.imageUrl,
-        tag: isMilestone ? '阶梯达标' : isWeekly ? '每周挑战' : '全勤抽奖',
+        tag: isMilestone ? '阶段达标' : isWeekly ? '每周挑战' : '全勤抽奖',
         tagColor: isMilestone ? '#0B5FD7' : isWeekly ? '#1677FF' : '#FF976A',
         category: isMilestone ? 'milestone' : isWeekly ? 'weekly' : 'lucky',
         description: t.description || '',
-        obtain: isMilestone ? '减重达到活动阶梯目标后解锁领取' : isWeekly ? '完成当期每周主题挑战后解锁' : '营期全勤即可参与抽奖',
+        obtain: isMilestone ? '血压记录、安全运动与低盐饮食达到阶段目标后解锁' : isWeekly ? '完成当期运动处方与主题挑战后解锁' : '营期全勤即可参与抽奖',
         stock: t.stock,
       });
     } else {
@@ -259,6 +259,25 @@ const mallPoints = computed(() => store.user ? store.getStudentMallPoints(store.
 const totalEarned = computed(() => store.user ? store.getStudentTotalEarnedPoints(store.user.id, activeCampId.value || undefined) : 0);
 const productCount = computed(() => store.getPointProducts(activeCampId.value).length);
 
+// ─── 线上运营活动：血压自测 7 日赛 / 一起走 / 季度之星 / 晒报告 / 发布会 ───
+const bpRecords = computed(() =>
+  store.user?.id && activeCampId.value ? store.getStudentBpRecords(store.user.id, activeCampId.value) : [],
+);
+const bpDays = computed(() => new Set(bpRecords.value.map((r) => r.date.slice(0, 10))).size);
+const bpProgress = computed(() => Math.min(bpDays.value / 7, 1));
+const exerciseDays = computed(() => new Set(
+  campEx.value.filter((r) => r.studentId === store.user?.id).map((r) => r.date.slice(0, 10)),
+).size);
+const walkProgress = computed(() => Math.min(exerciseDays.value / 21, 1));
+const walkMinutes = computed(() => campEx.value
+  .filter((r) => r.studentId === store.user?.id)
+  .reduce((sum, r) => sum + r.duration, 0));
+const joinedEvent = ref(false);
+function joinStageEvent() {
+  joinedEvent.value = true;
+  showToast('已报名第 6 个月阶段发布会，届时会收到提醒');
+}
+
 // 未读批注
 // 消息未读数（批注 + 系统通知，store 级统一，与各学员页「消息」Tab 角标一致）
 const unreadCount = computed(() =>
@@ -286,6 +305,49 @@ const unreadCount = computed(() =>
     </div>
 
     <div class="flex-1 px-5 space-y-4 relative z-20">
+      <!-- 线上运营活动：不依赖微信群，全部可在 H5 内参与和追踪 -->
+      <div class="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-blue-100">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-black text-gray-900">线上健康活动</h2>
+            <p class="mt-0.5 text-[10px] text-gray-400">长期运营，不依赖微信群人工打卡</p>
+          </div>
+          <span class="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold text-[#0B5FD7]">可追踪</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button class="rounded-2xl bg-gradient-to-br from-[#0B5FD7]/10 to-white p-3 text-left ring-1 ring-blue-100 active:scale-[0.98]" @click="store.setCurrentView('health-profile')">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold text-gray-900"><HeartPulse class="h-3.5 w-3.5 text-[#0B5FD7]" /> 血压自测 7 日赛</div>
+            <div class="mt-1 text-lg font-black text-[#0B5FD7]">{{ bpDays }}<span class="text-[10px] font-normal text-gray-400">/7 天</span></div>
+            <div class="mt-1 h-1 overflow-hidden rounded-full bg-white/70"><div class="h-full rounded-full bg-[#0B5FD7]" :style="{ width: `${bpProgress * 100}%` }"></div></div>
+            <div class="mt-1 text-[9px] text-gray-400">晨起、睡前各测一次</div>
+          </button>
+          <button class="rounded-2xl bg-gradient-to-br from-orange-50 to-white p-3 text-left ring-1 ring-orange-100 active:scale-[0.98]" @click="store.setCurrentView('exercise')">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold text-gray-900"><Footprints class="h-3.5 w-3.5 text-[#FF976A]" /> 一起走 · 线上健步</div>
+            <div class="mt-1 text-lg font-black text-[#FF6B35]">{{ exerciseDays }}<span class="text-[10px] font-normal text-gray-400">/21 天</span></div>
+            <div class="mt-1 h-1 overflow-hidden rounded-full bg-white/70"><div class="h-full rounded-full bg-[#FF976A]" :style="{ width: `${walkProgress * 100}%` }"></div></div>
+            <div class="mt-1 text-[9px] text-gray-400">累计 {{ walkMinutes }} 分钟 · 安全强度</div>
+          </button>
+          <button class="rounded-2xl bg-gradient-to-br from-amber-50 to-white p-3 text-left ring-1 ring-amber-100 active:scale-[0.98]" @click="store.setCurrentView('ranking')">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold text-gray-900"><Trophy class="h-3.5 w-3.5 text-amber-500" /> 季度之星</div>
+            <div class="mt-1 text-[11px] leading-relaxed text-gray-500">综合健康值、运动依从与指标改善，每季度公示</div>
+            <div class="mt-1.5 text-[9px] font-bold text-amber-600">查看排行榜 ›</div>
+          </button>
+          <button class="rounded-2xl bg-gradient-to-br from-violet-50 to-white p-3 text-left ring-1 ring-violet-100 active:scale-[0.98]" @click="store.setCurrentView('personal-journey')">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold text-gray-900"><Share2 class="h-3.5 w-3.5 text-violet-500" /> 看得见的改变</div>
+            <div class="mt-1 text-[11px] leading-relaxed text-gray-500">晒出阶段报告，记录血压与血脂变化</div>
+            <div class="mt-1.5 text-[9px] font-bold text-violet-600">去生成分享长图 ›</div>
+          </button>
+          <button class="col-span-2 flex items-center gap-3 rounded-2xl bg-gray-50 p-3 text-left ring-1 ring-gray-100 active:scale-[0.98]" @click="joinStageEvent">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#0B5FD7] shadow-sm"><Radio class="h-4 w-4" /></div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 text-[11px] font-bold text-gray-900"><CalendarDays class="h-3.5 w-3.5 text-[#0B5FD7]" /> 第 6 个月阶段健康发布会</div>
+              <div class="mt-0.5 text-[9px] text-gray-400">线上直播 · 医师答疑 · 优秀学员分享</div>
+            </div>
+            <span class="rounded-full px-2 py-1 text-[9px] font-bold" :class="joinedEvent ? 'bg-emerald-50 text-emerald-600' : 'bg-[#0B5FD7] text-white'">{{ joinedEvent ? '已报名' : '报名' }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- 奖品池（自动滚动 + 手动滑动） -->
       <div v-if="hasPrizes" class="relative rounded-3xl overflow-hidden">
         <!-- 温暖渐变背景 -->

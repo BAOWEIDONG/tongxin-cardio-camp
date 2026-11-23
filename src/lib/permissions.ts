@@ -115,6 +115,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'action.annotate_exercise', label: '运动批注/评分', desc: '康复师运动点评与评分' },
       { key: 'action.create_prescription', label: '新建运动处方', desc: '康复师提交心血管运动处方' },
       { key: 'action.sign_prescription', label: '签署运动处方', desc: '医师复核并签署处方' },
+      { key: 'action.publish_nutrition', label: '发布营养处方', desc: '营养师完成营养评估并发布个体化饮食处方' },
+      { key: 'action.view_nutrition', label: '查看营养处方', desc: '学员查看、医师/康复师只读核对饮食处方' },
+      { key: 'action.create_followup', label: '记录医师随访', desc: '医师保存风险评估、干预方案与复查计划' },
+      { key: 'action.manage_metrics', label: '录入阶段指标', desc: '录入开营、第6个月与结营三阶段检查数据' },
       { key: 'action.manual_score', label: '手动加减分', desc: '营养师补录线下积分' },
       { key: 'action.view_reports', label: '查看检查报告', desc: '查看确诊病历与检查资料' },
       { key: 'action.view_medications', label: '查看用药信息', desc: '查看长期用药与相互作用提示' },
@@ -133,19 +137,21 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, string[]> = {
     'menu.dashboard', 'menu.health_profile', 'menu.exercise', 'menu.diet', 'menu.weight',
     'menu.messages', 'menu.activity_hub', 'menu.points_mall', 'menu.my_rewards', 'menu.badge_center',
     'menu.personal_journey', 'menu.calendar',
-    'action.chat', 'action.send_message', 'action.export_report',
+    'action.chat', 'action.send_message', 'action.export_report', 'action.view_nutrition',
   ],
   coach: [
     'menu.coach_dashboard', 'menu.coach_students', 'menu.coach_annotations', 'menu.coach_activities',
-    'action.chat', 'action.send_message', 'action.annotate_exercise', 'action.create_prescription',
+    'action.chat', 'action.send_message', 'action.annotate_exercise', 'action.create_prescription', 'action.view_nutrition',
   ],
   doctor: [
     'menu.doctor_dashboard', 'menu.doctor_patients', 'menu.doctor_followups', 'menu.doctor_prescriptions',
     'action.chat', 'action.send_message', 'action.sign_prescription', 'action.view_reports', 'action.view_medications',
+    'action.create_followup', 'action.manage_metrics', 'action.view_nutrition',
   ],
   dietitian: [
     'menu.dietitian_dashboard', 'menu.dietitian_students', 'menu.dietitian_annotations',
-    'action.chat', 'action.send_message', 'action.annotate_diet', 'action.manual_score', 'action.export_report',
+    'action.chat', 'action.send_message', 'action.annotate_diet', 'action.publish_nutrition', 'action.view_nutrition',
+    'action.manage_metrics', 'action.manual_score', 'action.export_report',
   ],
 };
 
@@ -166,6 +172,7 @@ export const VIEW_PERMISSION: Partial<Record<string, string>> = {
   dashboard: 'menu.dashboard',
   'health-profile': 'menu.health_profile',
   exercise: 'menu.exercise',
+  'nutrition-prescription': 'action.view_nutrition',
   diet: 'menu.diet',
   'weight-checkin': 'menu.weight',
   messages: 'menu.messages',

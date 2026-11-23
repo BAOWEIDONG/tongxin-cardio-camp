@@ -8,7 +8,6 @@ import {
   Gift, HeartPulse, LayoutDashboard, LockKeyhole, Settings2, ShieldCheck,
   Stethoscope, UserCog, Users,
 } from 'lucide-vue-next';
-import { metricValuesFor } from '../mock/data';
 import type { View } from '../store/app';
 
 const store = useAppStore();
@@ -41,7 +40,7 @@ const pendingPrescriptions = computed(() =>
 const highRiskCount = computed(() => students.value.filter((s) => {
   const cid = s.campIds?.find((id) => campIds.value.has(id));
   if (!cid) return false;
-  const v = metricValuesFor(s.id, cid) || {};
+  const v = store.getEffectiveMetricValues(s.id, cid) || {};
   const sbp = Number(v.mc_cv_sbp?.afterValue ?? v.mc_cv_sbp?.beforeValue ?? 0);
   const dbp = Number(v.mc_cv_dbp?.afterValue ?? v.mc_cv_dbp?.beforeValue ?? 0);
   const ldl = Number(v.mc_bl_ldl?.afterValue ?? v.mc_bl_ldl?.beforeValue ?? 0);
@@ -233,7 +232,8 @@ function goPermissions() {
           <ShieldCheck class="h-3.5 w-3.5" />两级管理边界
         </p>
         <p class="mt-1.5 text-[10px] leading-relaxed text-gray-500">
-          一级集团管理员可看全集团、配置集团规则；二级医院管理员仅可管理本院账户、营期和团队权限。所有团队成员权限跟随医院，不能跨院查看。
+          <template v-if="isPlatform">一级集团管理员可查看全部医院、配置集团规则；二级医院管理员仅可管理本院账户、营期和团队权限。所有团队成员权限跟随医院，不能跨院查看。</template>
+          <template v-else>二级医院管理员仅可管理本院账户、营期和团队权限；团队成员权限跟随医院，不能跨院查看。</template>
         </p>
       </div>
     </div>

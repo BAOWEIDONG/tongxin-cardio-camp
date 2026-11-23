@@ -40,6 +40,9 @@ export interface MedicalReport {
   url: string;
   type: 'image' | 'pdf';
   name?: string;
+  /** 入营资料分类：确诊病历 / 化验 / 心电 / 其他检查 */
+  category?: 'diagnosis' | 'labs' | 'ecg' | 'other';
+  uploadedAt?: string;
 }
 
 export interface User {
@@ -99,6 +102,23 @@ export interface WeightRecord {
   commentRead?: boolean;
 }
 
+/** 家庭血压自测记录：心血管营线上管理的核心过程数据，不等同于门诊诊断。 */
+export interface BpRecord {
+  id: string;
+  studentId: string;
+  campId: string;
+  /** yyyy-MM-dd HH:mm:ss */
+  date: string;
+  /** 收缩压 mmHg */
+  sbp: number;
+  /** 舒张压 mmHg */
+  dbp: number;
+  /** 静息心率 次/分 */
+  pulse?: number | null;
+  /** 测量备注：晨起 / 睡前 / 服药后 / 头晕等 */
+  note?: string;
+}
+
 export interface ExerciseRecord {
   id: string;
   studentId?: string;
@@ -124,6 +144,12 @@ export interface ExerciseRecord {
   commentRead?: boolean;
   /** 教练对该条运动记录的评分：0=未达标 / 1=尚可 / 2=到位 */
   coachScore?: 0 | 1 | 2 | null;
+   /** 运动平均心率（次/分，选填；用于心血管运动安全复核） */
+  avgHr?: number | null;
+  /** 运动后疲劳程度（1–5 级） */
+  fatigue?: number | null;
+  /** 运动中的不适信号；none=无不适 */
+  symptoms?: ('none' | 'chest_pain' | 'dyspnea' | 'dizziness' | 'palpitation' | 'other')[];
 }
 
 export interface DietRecord {
@@ -208,6 +234,85 @@ export interface CardioPrescription {
   note?: string;
   createdAt: string;
   signedAt?: string;
+}
+
+/** 营养评估与个体化饮食处方：营养师发布，学员查看，医师只读核对 */
+export interface NutritionPrescription {
+  id: string;
+  campId: string;
+  studentId: string;
+  dietitianId?: string;
+  dietitianName: string;
+  status: 'draft' | 'published';
+  /** 营养评估结论（结合血压、血脂、肾功能、用药与饮食习惯） */
+  assessment: string;
+  /** 个体化管理目标 */
+  energyTarget: string;
+  proteinTarget: string;
+  saltTarget: string;
+  oilTarget: string;
+  fiberTarget: string;
+  fluidTarget: string;
+  /** 三餐示例 */
+  breakfast: string;
+  lunch: string;
+  dinner: string;
+  snack: string;
+  /** 忌口与用药-饮食相互作用 */
+  restrictions: string;
+  /** 随访计划 */
+  followupPlan: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+}
+
+/** 医师随访/干预记录：保存后进入健康档案，并同步团队随访留痕 */
+export interface DoctorFollowupRecord {
+  id: string;
+  campId: string;
+  studentId: string;
+  doctorId: string;
+  doctorName: string;
+  /** 门诊 / 第2周复核 / 血压预警 / 第6个月复查 / 结营评估 */
+  type: string;
+  date: string;
+  riskLevel: '低' | '中' | '高';
+  /** 管理目标与结论 */
+  note: string;
+  /** 用药复核建议（仅记录建议，不在 H5 模拟开药） */
+  medicationReview?: string;
+  /** 下次随访日期 YYYY-MM-DD */
+  nextFollowupDate?: string;
+  /** 是否需要转诊/到院复核 */
+  referral?: string;
+}
+
+/** 知情同意签署留痕 */
+export interface ConsentRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  phone: string;
+  /** 协议版本，如 v1.0-2026-11 */
+  protocolVersion: string;
+  /** 签署时间 yyyy-MM-dd HH:mm:ss */
+  signedAt: string;
+  /** 留痕摘要（演示为协议版本+手机号后四位+时间） */
+  traceId: string;
+}
+
+export type MetricStage = 'baseline' | 'midterm' | 'closeout';
+
+/** 心血管指标的分阶段快照（开营 / 第6个月 / 结营） */
+export interface MetricStageSnapshot {
+  id: string;
+  studentId: string;
+  campId: string;
+  stage: MetricStage;
+  values: Record<string, number | string | null>;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 /** 营养师手动加减分记录（用于补录线下打卡积分等） */
@@ -698,6 +803,9 @@ export type BadgeCategory = 'milestone' | 'achievement' | 'activity';
  *  - weight_loss_kg：体重下降 ≥ threshold kg
  *  - weight_loss_percent：体重下降 ≥ threshold %
  *  - fat_loss_kg：脂肪量下降 ≥ threshold kg
+ *  - low_salt_days：饮食打卡中标注低盐的天数 ≥ threshold
+ *  - checkin_days_total：整个营期累计有打卡的天数 ≥ threshold
+ *  - bp_record_days：家庭血压记录的不同天数 ≥ threshold
  *  - early_exercise_count：早上 9 点前完成运动 ≥ threshold 次
  *  - single_exercise_minutes：单次运动时长 ≥ threshold 分钟
  *  - max_intensity：单次运动强度达到 Lv.threshold
@@ -710,6 +818,9 @@ export type BadgeCondition =
   | 'weight_loss_kg'
   | 'weight_loss_percent'
   | 'fat_loss_kg'
+  | 'low_salt_days'
+  | 'checkin_days_total'
+  | 'bp_record_days'
   | 'early_exercise_count'
   | 'single_exercise_minutes'
   | 'max_intensity'

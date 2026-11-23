@@ -13,7 +13,7 @@ import { Popup as VanPopup, showToast } from 'vant';
 import { formatDateTime } from '../lib/utils';
 import { useDateGrouping } from '../composables/useDateGrouping';
 import type { ExerciseRecord } from '../types';
-import { MOCK_METRIC_VALUES, metricValuesFor } from '../mock/data';
+import { MOCK_METRIC_VALUES } from '../mock/data';
 import { buildMedicalData, isValueOutOfRange, type MedicalCategory, type Indicator } from '../lib/medicalData';
 
 const store = useAppStore();
@@ -91,7 +91,7 @@ const EXERCISE_TEMPLATES = [
   '运动强度很好，继续保持！',
   '时长达标，非常好',
   '强度偏高，注意循序渐进，避免受伤',
-  '建议延长到 40 分钟以上，燃脂效果更好',
+  '如无不适可逐步延长到 30–40 分钟，保持能完整说句子',
   '运动后记得拉伸放松',
 ];
 
@@ -198,7 +198,7 @@ const getPrevWeight = (rec: { id: string }): number | null => {
 // ─── Medical tab (read-only) ───
 const getStudentMetrics = (studentId?: string) => {
   if (!studentId) return MOCK_METRIC_VALUES;
-  return metricValuesFor(studentId, selectedCampId.value) || MOCK_METRIC_VALUES;
+  return store.getEffectiveMetricValues(studentId, selectedCampId.value) || MOCK_METRIC_VALUES;
 };
 const medicalData = ref<MedicalCategory[]>(JSON.parse(JSON.stringify(buildMedicalData(store.metricConfigs, getStudentMetrics(student.value?.id), student.value?.gender))));
 const collapsedCats = ref<Set<string>>(new Set());

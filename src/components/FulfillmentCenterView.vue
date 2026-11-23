@@ -8,7 +8,7 @@ import {
   AlertCircle, ClipboardCheck, Eye, Search,
 } from 'lucide-vue-next';
 import type { RewardClaim, PointExchangeRecord, Camp, ExchangeAuditEntry } from '../types';
-import { computeWeightMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
+import { computeCardioMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
 import { campDateRange } from '../lib/camps';
 
 const store = useAppStore();
@@ -121,6 +121,7 @@ const crossCampPendingAudit = computed(() => {
     const dietRecords = store.getCampDietRecords(camp.id);
     const exerciseRecords = store.getCampExerciseRecords(camp.id);
     const weightRecords = store.getCampWeightRecords(camp.id);
+    const bpRecords = store.getCampBpRecords(camp.id);
     const students = store.getStudentsByCamp(camp.id);
     const claims = store.getCampRewardClaims(camp.id);
     const tiers = store.getCampRewardTiers(camp.id);
@@ -131,28 +132,26 @@ const crossCampPendingAudit = computed(() => {
         return c.studentId === studentId && tier?.source === 'activity' && tier?.activityType === activityType;
       });
 
-    // 按阈值百分比匹配里程碑对应的奖品层级（与 CampActivitiesView 逻辑一致）
-    const findMilestoneTier = (threshold: number) => {
-      const percent = Math.round(threshold * 100);
+    // 按阶段匹配里程碑奖品（与 CampActivitiesView 逻辑一致）
+    const findMilestoneTier = (phase: number) => {
+      const phaseText = phase === 1 ? '阶段一' : '阶段二';
       return tiers.find(t =>
         t.source === 'activity' && t.activityType === 'milestone' &&
-        t.description?.includes(`${percent}%`)
+        (t.description || '').includes(phaseText)
       );
     };
-    // 检查某个具体里程碑档位是否已被领取（避免 3% 已领后 5% 不再显示）
-    const isMilestoneClaimed = (studentId: string, threshold: number) => {
-      const tier = findMilestoneTier(threshold);
+    const isMilestoneClaimed = (studentId: string, phase: number) => {
+      const tier = findMilestoneTier(phase);
       if (!tier) return false;
       return claims.some(c => c.studentId === studentId && c.tierId === tier.id);
     };
 
     for (const s of students) {
-      const weights = weightRecords
-        .filter(w => w.studentId === s.id)
-        .sort((a, b) => a.date.localeCompare(b.date));
-      const startW = weights.length > 0 ? weights[0].weight : null;
-      const milestones = computeWeightMilestones(weights, startW);
-      const latestW = weights.length > 0 ? weights[weights.length - 1].weight : null;
+      const milestones = computeCardioMilestones(
+        dietRecords.filter(r => r.studentId === s.id),
+        exerciseRecords.filter(r => r.studentId === s.id),
+        bpRecords.filter(r => r.studentId === s.id),
+      );
 
       const challenges = computeWeeklyChallenges(dietRecords, exerciseRecords, weightRecords, s.id, {
         challengeStartDate: cfg.weeklyChallengeStartDate,
@@ -163,19 +162,19 @@ const crossCampPendingAudit = computed(() => {
 
       // 所有已达标且未被领取的里程碑，各档位独立显示
       const pendingMilestones = milestones
-        .filter(m => m.achieved && !isMilestoneClaimed(s.id, m.threshold))
-        .sort((a, b) => a.threshold - b.threshold);
+        .filter(m => m.achieved && !isMilestoneClaimed(s.id, m.phase))
+        .sort((a, b) => a.phase - b.phase);
 
       if (cfg.weightMilestone) {
         for (const m of pendingMilestones) {
           list.push({
             studentId: s.id, studentName: s.name,
             activityType: 'milestone',
-            activityLabel: m.label || '阶梯减重达标',
-            subLabel: `减重 ${startW && latestW ? +(startW - latestW).toFixed(1) : 0}kg`,
+            activityLabel: m.label || '阶段达标',
+            subLabel: m.tracks.map(t => `${t.label} ${t.current}/${t.target}`).join(' · '),
             campName: camp.name,
             campId: camp.id,
-            threshold: m.threshold,
+            threshold: m.phase,
           });
         }
       }
@@ -392,12 +391,12 @@ const availableTiers = computed(() => {
 
 function openAuditModal(studentId: string, studentName: string, activityType: 'milestone' | 'weekly' | 'lucky', activityLabel: string, campId: string, threshold?: number) {
   auditTarget.value = { studentId, studentName, activityType, activityLabel, campId, threshold };
-  // 里程碑：按阈值百分比自动选中对应奖品层级
+  // 里程碑：按阶段自动选中对应奖品层级
   if (activityType === 'milestone' && threshold !== undefined) {
-    const percent = Math.round(threshold * 100);
+    const phaseText = threshold === 1 ? '阶段一' : '阶段二';
     const tier = allRewardTiers.value.find(t =>
       t.source === 'activity' && t.activityType === 'milestone' &&
-      t.description?.includes(`${percent}%`) && t.stock > 0
+      (t.description || '').includes(phaseText) && t.stock > 0
     );
     selectedTierId.value = tier?.id || '';
   } else {

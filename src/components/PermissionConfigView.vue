@@ -29,13 +29,21 @@ function load() {
 watch([selectedHospital, selectedRole], load, { immediate: true });
 
 const lockPlatform = computed(() => !isPlatform.value);
-const availableGroups = computed(() => PERMISSION_GROUPS.map((g) => ({
-  ...g,
-  items: g.items.map((item) => ({
-    ...item,
-    locked: lockPlatform.value && PLATFORM_ONLY_PERMISSIONS.has(item.key),
-  })),
-})));
+const roleGroupKey: Record<Role, string> = {
+  student: 'student',
+  coach: 'coach',
+  doctor: 'doctor',
+  dietitian: 'dietitian',
+};
+const availableGroups = computed(() => PERMISSION_GROUPS
+  .filter((g) => g.key === roleGroupKey[selectedRole.value] || g.key === 'action')
+  .map((g) => ({
+    ...g,
+    items: g.items.map((item) => ({
+      ...item,
+      locked: lockPlatform.value && PLATFORM_ONLY_PERMISSIONS.has(item.key),
+    })),
+  })));
 
 function checked(key: string) {
   return draft.value.includes(key);
@@ -58,13 +66,14 @@ function selectGroup(groupKey: string, checkedValue: boolean) {
   else draft.value = draft.value.filter((k) => !keys.includes(k));
 }
 function selectAll() {
-  const keys = PERMISSION_GROUPS.flatMap((g) => g.items)
+  const keys = availableGroups.value.flatMap((g) => g.items)
     .filter((i) => !(lockPlatform.value && PLATFORM_ONLY_PERMISSIONS.has(i.key)))
     .map((i) => i.key);
   draft.value = keys;
 }
 function clearAll() {
-  draft.value = draft.value.filter((k) => lockPlatform.value && PLATFORM_ONLY_PERMISSIONS.has(k));
+  const allowed = new Set(availableGroups.value.flatMap((g) => g.items.map((i) => i.key)));
+  draft.value = draft.value.filter((k) => (lockPlatform.value && PLATFORM_ONLY_PERMISSIONS.has(k)) || !allowed.has(k));
 }
 function resetDefault() {
   draft.value = [...store.getHospitalPermissionTemplate(selectedHospital.value, selectedRole.value)];

@@ -233,7 +233,7 @@ const handleSubmit = () => {
           <div class="space-y-2">
             <label class="text-sm font-medium text-gray-700 block">活动标题 <span class="text-red-500">*</span></label>
             <Input
-              placeholder="例如：全身燃脂 HIIT"
+              placeholder="例如：低强度间歇步行 + 弹力带"
               :value="formData.title"
               @input="formData.title = ($event.target as HTMLInputElement).value; error = ''"
             />

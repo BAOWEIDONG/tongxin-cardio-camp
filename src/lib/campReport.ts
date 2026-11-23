@@ -359,6 +359,8 @@ const ACHIEVEMENT_DEFS: Array<{
     checkinStats: CheckinStats;
     weightTrend: WeightTrend;
     metricChanges: MetricChange[];
+    dietRecords: DietRecord[];
+    exerciseRecords: ExerciseRecord[];
   }) => boolean;
 }> = [
   {
@@ -383,58 +385,48 @@ const ACHIEVEMENT_DEFS: Array<{
     check: (r) => r.checkinStats.longestStreak >= 28,
   },
   {
-    id: 'weight_loss_3',
-    title: '减重之星',
-    description: '体重减少超过3公斤',
-    icon: '⚖️',
-    check: (r) => r.weightTrend.totalChange !== null && r.weightTrend.totalChange <= -3,
-  },
-  {
-    id: 'weight_loss_5',
-    title: '减重冠军',
-    description: '体重减少超过5公斤',
-    icon: '👑',
-    check: (r) => r.weightTrend.totalChange !== null && r.weightTrend.totalChange <= -5,
-  },
-  {
-    id: 'fat_loss',
-    title: '燃脂勇士',
-    description: '脂肪量减少超过2公斤',
-    icon: '🔥',
-    check: (r) => {
-      const fat = r.metricChanges.find((m) => m.name === '脂肪量');
-      return fat?.change !== null && fat?.change !== undefined && fat.change <= -2;
-    },
-  },
-  {
-    id: 'muscle_gain',
-    title: '肌肉增强',
-    description: '肌肉量增加',
-    icon: '💪',
-    check: (r) => {
-      const muscle = r.metricChanges.find((m) => m.name === '肌肉量');
-      return muscle?.change !== null && muscle?.change !== undefined && muscle.change > 0;
-    },
-  },
-  {
-    id: 'bmr_up',
-    title: '代谢提升',
-    description: '基础代谢率提升',
-    icon: '📈',
-    check: (r) => {
-      const bmr = r.metricChanges.find((m) => m.name === '基础代谢率');
-      return bmr?.change !== null && bmr?.change !== undefined && bmr.change > 0;
-    },
-  },
-  {
-    id: 'visceral_fat',
-    title: '内脏脂肪改善',
-    description: '内脏脂肪面积下降',
+    id: 'bp_control',
+    title: '血压更稳',
+    description: '收缩压较开营下降 ≥10 mmHg，或进入 <130 mmHg 管理区间',
     icon: '🫀',
     check: (r) => {
-      const v = r.metricChanges.find((m) => m.name === '内脏脂肪面积');
-      return v?.change !== null && v?.change !== undefined && v.change < 0;
+      const sbp = r.metricChanges.find((m) => m.configId === 'mc_cv_sbp')
+        || r.metricChanges.find((m) => m.name === '收缩压');
+      const after = typeof sbp?.afterValue === 'number' ? sbp.afterValue : null;
+      const change = typeof sbp?.change === 'number' ? sbp.change : null;
+      return (change !== null && change <= -10) || (after !== null && after < 130);
     },
+  },
+  {
+    id: 'ldl_control',
+    title: 'LDL-C 改善',
+    description: 'LDL-C 较开营下降 ≥0.5 mmol/L，或达到常用高危管理目标',
+    icon: '🧪',
+    check: (r) => {
+      const ldl = r.metricChanges.find((m) => m.configId === 'mc_bl_ldl')
+        || r.metricChanges.find((m) => m.name === '低密度脂蛋白胆固醇');
+      const after = typeof ldl?.afterValue === 'number' ? ldl.afterValue : null;
+      const change = typeof ldl?.change === 'number' ? ldl.change : null;
+      return (change !== null && change <= -0.5) || (after !== null && after < 2.6);
+    },
+  },
+  {
+    id: 'hcy_control',
+    title: '同型半胱氨酸改善',
+    description: '同型半胱氨酸较开营下降，需由医师结合叶酸与 B 族维生素方案判断',
+    icon: '🩸',
+    check: (r) => {
+      const hcy = r.metricChanges.find((m) => m.configId === 'mc_cv_hcy')
+        || r.metricChanges.find((m) => m.name === '同型半胱氨酸');
+      return typeof hcy?.change === 'number' && hcy.change < 0;
+    },
+  },
+  {
+    id: 'low_salt_15',
+    title: '低盐践行者',
+    description: '累计 15 天以上饮食记录标注低盐、少油',
+    icon: '🥗',
+    check: (r) => r.dietRecords.filter((d) => d.lowSalt).length >= 15,
   },
   {
     id: 'abnormal_improved',
@@ -460,8 +452,8 @@ const ACHIEVEMENT_DEFS: Array<{
   },
   {
     id: 'exercise_800',
-    title: '运动健将',
-    description: '累计运动时长超过800分钟',
+    title: '规律运动',
+    description: '累计安全运动时长超过 800 分钟',
     icon: '🏃',
     check: (r) => r.checkinStats.totalExerciseDuration >= 800,
   },
@@ -473,19 +465,17 @@ const ACHIEVEMENT_DEFS: Array<{
     check: (r) => r.checkinStats.completionRate >= 0.9,
   },
   {
-    id: 'perfect_transform',
-    title: '完美蜕变',
-    description: '体重下降 + 脂肪下降 + 肌肉增长',
+    id: 'risk_managed',
+    title: '风险管理到位',
+    description: '血压与 LDL-C 均有改善，且运动记录未出现不适信号',
     icon: '🌟',
     check: (r) => {
-      const weight = r.weightTrend.totalChange;
-      const fat = r.metricChanges.find((m) => m.name === '脂肪量')?.change;
-      const muscle = r.metricChanges.find((m) => m.name === '肌肉量')?.change;
-      return (
-        weight !== null && weight !== undefined && weight < 0 &&
-        fat !== null && fat !== undefined && fat < 0 &&
-        muscle !== null && muscle !== undefined && muscle > 0
-      );
+      const sbp = r.metricChanges.find((m) => m.configId === 'mc_cv_sbp');
+      const ldl = r.metricChanges.find((m) => m.configId === 'mc_bl_ldl');
+      const bpGood = typeof sbp?.change === 'number' && sbp.change <= -10;
+      const ldlGood = typeof ldl?.change === 'number' && ldl.change <= -0.5;
+      const safe = r.exerciseRecords.every((e) => (e.symptoms || ['none']).every((s) => s === 'none'));
+      return bpGood && ldlGood && safe;
     },
   },
 ];
@@ -497,9 +487,15 @@ export function computeAchievements(
   checkinStats: CheckinStats,
   weightTrend: WeightTrend,
   metricChanges: MetricChange[],
-  extra?: { exerciseRecords?: ExerciseRecord[] },
+  extra?: { exerciseRecords?: ExerciseRecord[]; dietRecords?: DietRecord[] },
 ): Achievement[] {
-  const ctx = { checkinStats, weightTrend, metricChanges };
+  const ctx = {
+    checkinStats,
+    weightTrend,
+    metricChanges,
+    dietRecords: extra?.dietRecords || [],
+    exerciseRecords: extra?.exerciseRecords || [],
+  };
   const base = ACHIEVEMENT_DEFS.map((def) => ({
     id: def.id,
     title: def.title,
@@ -508,8 +504,9 @@ export function computeAchievements(
     unlocked: def.check(ctx),
   }));
 
-  // ---- 基于运动记录的行为勋章（不依赖体成分数据，学员更有获得感）----
+  // ---- 基于运动和饮食行为的安全徽章（不依赖体成分数据）----
   const exerciseRecords = extra?.exerciseRecords || [];
+  const dietRecords = extra?.dietRecords || [];
   const behavioral: Achievement[] = [];
 
   if (exerciseRecords.length > 0) {
@@ -526,24 +523,28 @@ export function computeAchievements(
       unlocked: earlyCount >= 3,
     });
 
-    // 耐力王：单次运动 ≥ 60 分钟
-    const maxSingle = Math.max(...exerciseRecords.map((r) => r.duration));
+    // 持续运动：在安全强度下完成单次 ≥30 分钟
+    const safeLongest = Math.max(...exerciseRecords
+      .filter((r) => r.intensity <= 3 && (r.symptoms || ['none']).every((s) => s === 'none'))
+      .map((r) => r.duration), 0);
     behavioral.push({
       id: 'endurance_king',
-      title: '耐力王',
-      description: `单次运动达到 60 分钟（当前最长 ${maxSingle} 分钟）`,
+      title: '稳步耐力',
+      description: `在安全强度下完成单次 30 分钟以上运动（当前最长 ${safeLongest} 分钟）`,
       icon: '🏅',
-      unlocked: maxSingle >= 60,
+      unlocked: safeLongest >= 30,
     });
 
-    // 高强度挑战：单次主观强度拉满（Lv.5）
-    const hasMaxIntensity = exerciseRecords.some((r) => r.intensity >= 5);
+    // 安全强度：所有运动均控制在 RPE 3 级以内，且无不适信号
+    const allSafe = exerciseRecords.length >= 5
+      && exerciseRecords.every((r) => r.intensity <= 3)
+      && exerciseRecords.every((r) => (r.symptoms || ['none']).every((s) => s === 'none'));
     behavioral.push({
       id: 'high_intensity',
-      title: '极限挑战',
-      description: '完成一次 Lv.5 非常高强度的运动',
-      icon: '⚡',
-      unlocked: hasMaxIntensity,
+      title: '安全强度',
+      description: '连续 5 次运动均控制在 RPE 3 级以内且无不适',
+      icon: '🛡️',
+      unlocked: allSafe,
     });
 
     // 多面手：尝试过 3 种以上运动类型
@@ -554,6 +555,17 @@ export function computeAchievements(
       description: `尝试过 3 种以上运动类型（当前 ${typeSet.size}/3 种）`,
       icon: '🎽',
       unlocked: typeSet.size >= 3,
+    });
+  }
+
+  if (dietRecords.length > 0) {
+    const lowSaltDays = new Set(dietRecords.filter((r) => r.lowSalt).map((r) => r.date.substring(0, 10)));
+    behavioral.push({
+      id: 'low_salt_10',
+      title: '低盐习惯',
+      description: `累计 10 天饮食打卡标注低盐（当前 ${lowSaltDays.size}/10 天）`,
+      icon: '🧂',
+      unlocked: lowSaltDays.size >= 10,
     });
   }
 
@@ -599,7 +611,7 @@ export function generateStudentReport(
   const metricChanges = computeMetricChanges(metricConfigs, metricValues, student.gender);
 
   // 4. 成就（传入运动记录以计算行为类勋章）
-  const achievements = computeAchievements(checkinStats, weightTrend, metricChanges, { exerciseRecords });
+  const achievements = computeAchievements(checkinStats, weightTrend, metricChanges, { exerciseRecords, dietRecords });
 
   // 5. 核心摘要
   const weightLossKg = weightTrend.totalChange !== null ? -weightTrend.totalChange : null;
@@ -863,20 +875,20 @@ export function generateEnterpriseReport(summary: DietitianCampSummary): Enterpr
   const highlights: string[] = [];
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-  if (avgWeightLoss !== null && avgWeightLoss > 0) {
+  const bpAggregate = metricAggregates.find((m) => m.configId === 'mc_cv_sbp');
+  if (bpAggregate && bpAggregate.totalCount >= 2) {
     highlights.push(
-      `本期 ${totalStudents} 名学员人均减重 ${avgWeightLoss.toFixed(1)} kg` +
-      (weightLossCount > 0 ? `，${weightLossCount}/${totalStudents} 名学员体重下降` : ''),
+      `${bpAggregate.improvedCount}/${bpAggregate.totalCount} 名复查学员收缩压较基线改善`,
+    );
+  }
+  const ldlAggregate = metricAggregates.find((m) => m.configId === 'mc_bl_ldl');
+  if (ldlAggregate && ldlAggregate.totalCount >= 2) {
+    highlights.push(
+      `${ldlAggregate.improvedCount}/${ldlAggregate.totalCount} 名复查学员 LDL-C 较基线改善`,
     );
   }
   if (highCompletionRate !== null && highCompletionCount > 0) {
     highlights.push(`${pct(highCompletionRate)} 的学员打卡完成率超过 80%，全员平均完成率 ${avgCompletionRate !== null ? pct(avgCompletionRate) : '--'}`);
-  }
-  if (weightGoalCount > 0) {
-    highlights.push(`${weightGoalCount} 名学员减重达到 3kg 以上，占总参营人数 ${pct(weightGoalCount / Math.max(totalStudents, 1))}`);
-  }
-  if (bodyFatRecordCount > 0 && bodyFatLossCount > 0) {
-    highlights.push(`${bodyFatLossCount}/${bodyFatRecordCount} 名学员体脂肪下降，健康风险降低`);
   }
   if (highlights.length === 0 && totalExerciseMinutes > 0) {
     highlights.push(`全员累计运动 ${(totalExerciseMinutes / 60).toFixed(0)} 小时，累计打卡 ${totalCheckinRecords} 次`);

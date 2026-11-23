@@ -8,7 +8,7 @@ import { uploadFile } from '../lib/api';
 import { compressImage } from '../lib/imageCompress';
 import { NavBar, Button, Card, ChartRulePopup, CheckinComments } from './ui';
 import { recordComments } from '../lib/comments';
-import { Scale, TrendingUp, TrendingDown, Minus, Camera, X, ChevronDown, Target, Pencil } from 'lucide-vue-next';
+import { Scale, TrendingUp, TrendingDown, Minus, Camera, X, ChevronDown, Pencil } from 'lucide-vue-next';
 import { showToast } from 'vant';
 import { formatDateTime } from '../lib/utils';
 import { thumbUrl } from '../lib/imageThumb';
@@ -45,7 +45,7 @@ const photoInputRef = ref<HTMLInputElement | null>(null);
 // 照片上传区折叠（默认收起，减少视觉干扰）
 const showPhotoUpload = ref(true);
 
-// 目标体重
+// 体液波动关注线（沿用原 targetWeight 字段，避免破坏已有本地数据）
 const targetWeight = ref(store.user?.targetWeight ? String(store.user.targetWeight) : '');
 const editingTarget = ref(false);
 const saveTarget = () => {
@@ -514,12 +514,12 @@ function handleChartTouchMove(e: TouchEvent) {
         </div>
       </Card>
 
-      <!-- 目标体重 -->
+      <!-- 体液波动关注线 -->
       <Card class="p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-            <Target class="w-4 h-4 text-[#FF976A]" />
-            我的目标体重
+            <Scale class="w-4 h-4 text-[#FF976A]" />
+            体液波动关注线
           </span>
           <button v-if="!editingTarget" @click="editingTarget = true" class="text-xs text-[#1677FF] font-medium flex items-center gap-1">
             <Pencil class="w-3 h-3" /> {{ store.user?.targetWeight ? '修改' : '设置' }}
@@ -531,7 +531,7 @@ function handleChartTouchMove(e: TouchEvent) {
             inputmode="decimal"
             step="0.1"
             v-model="targetWeight"
-            placeholder="例如 60.0"
+            placeholder="例如 65.0"
             class="flex-1 rounded-lg border border-gray-200 p-2.5 text-sm focus:border-[#1677FF] focus:outline-none"
           />
           <span class="text-sm text-gray-400">kg</span>
@@ -541,9 +541,9 @@ function handleChartTouchMove(e: TouchEvent) {
           <div v-if="store.user?.targetWeight" class="flex items-baseline gap-2">
             <span class="text-2xl font-black text-[#FF976A]">{{ store.user.targetWeight }}</span>
             <span class="text-xs text-gray-400">kg</span>
-            <span v-if="weightStats" class="text-xs text-gray-500 ml-1">较目标相差 {{ Math.abs(parseFloat((weightStats.last - store.user.targetWeight).toFixed(1))) }} kg（仅作参考）</span>
+            <span v-if="weightStats" class="text-xs text-gray-500 ml-1">距关注线 {{ Math.abs(parseFloat((weightStats.last - store.user.targetWeight).toFixed(1))) }} kg（仅作参考）</span>
           </div>
-          <div v-else class="text-xs text-gray-400">可选设置一个参考目标，趋势图会显示目标线；医师更关注短期波动和水肿情况</div>
+          <div v-else class="text-xs leading-relaxed text-gray-400">可选设置体液波动关注线。建议以开营体重或医师给出的上限为参考；1 周内上升 ≥2kg 或伴水肿、气短时请及时联系团队。</div>
         </div>
       </Card>
     </div>
@@ -558,9 +558,9 @@ function handleChartTouchMove(e: TouchEvent) {
             <ChartRulePopup title="体重趋势图说明">
               <p>记录每次体重打卡的体重值，按时间顺序连成折线。</p>
               <p><span class="font-bold text-gray-900">交互：</span>点击/触摸折线图上的数据点可查看该次记录的详细信息。</p>
-              <p><span class="font-bold text-gray-900">目标体重线：</span>橙色虚线表示你设置的目标体重，方便对照进度。</p>
+              <p><span class="font-bold text-gray-900">关注线：</span>橙色虚线表示体液波动关注值，用于观察短期快速上升，不代表减重目标。</p>
               <p><span class="font-bold text-gray-900">批注标记：</span>数据点上的小圆点表示营养师有批注，红色=未读、蓝色=已读，点击可跳转到对应记录。</p>
-              <p><span class="font-bold text-gray-900">变化量：</span>最新体重 - 首次记录体重，绿色表示体重下降、橙色表示上升。</p>
+              <p><span class="font-bold text-gray-900">变化量：</span>最新体重 - 首次记录体重，只用于观察体液潴留；体重不是心血管营的主要疗效指标。</p>
             </ChartRulePopup>
           </div>
           <div v-if="weightStats" class="flex items-center gap-1.5">
@@ -610,12 +610,12 @@ function handleChartTouchMove(e: TouchEvent) {
             <path :d="linePath" fill="none" stroke="#1677FF" stroke-width="2"
                   stroke-linejoin="round" stroke-linecap="round" />
 
-            <!-- 目标体重线 -->
+            <!-- 体液波动关注线 -->
             <g v-if="targetLineY !== null">
               <line :x1="PL" :y1="targetLineY" :x2="CW - PR" :y2="targetLineY"
                     stroke="#FF976A" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.8" />
               <text :x="CW - PR" :y="targetLineY - 4" text-anchor="end"
-                    font-size="9" fill="#FF976A" font-weight="bold">目标 {{ store.user?.targetWeight }}kg</text>
+                    font-size="9" fill="#FF976A" font-weight="bold">关注线 {{ store.user?.targetWeight }}kg</text>
             </g>
 
             <!-- Vertical guide line (active point) -->

@@ -6,8 +6,10 @@ import { useCoachCounts } from '../lib/coachCounts';
 import { usePaged } from '../composables/usePaged';
 import { campDateRange } from '../lib/camps';
 import { rankStudents } from '../lib/scoring';
+import { DEFAULT_CARDIO_RPE, RPE_PRESCRIPTION_OPTIONS } from '../lib/rpe';
 import { Card } from './ui';
 import ActivityCard from './ActivityCard.vue';
+import CampFlowCard from './CampFlowCard.vue';
 import type { CoachActivityRecord } from '../types';
 import { UserCircle, LogOut, Clock, FileText, Users, CheckCircle, XCircle, Search, X, ChevronDown, Dumbbell, ClipboardList, HeartPulse, MessageCircle } from 'lucide-vue-next';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem, Popup as VanPopup, showConfirmDialog, showToast } from 'vant';
@@ -24,11 +26,11 @@ const showPrescription = ref(false);
 const prescriptionForm = ref({
   studentId: '',
   mode: '室内快走 + 弹力带轻阻力训练',
-  intensity: '低至中等强度，RPE 11–13',
+  intensity: '低至中等强度',
   freq: '5 次/周',
   duration: '20–30 分钟',
   targetHr: '88–105 次/分（以能完整说句子为准）',
-  rpe: '11–13（轻到稍累）',
+  rpe: DEFAULT_CARDIO_RPE,
   warmup: '慢走 + 踝泵 + 肩部活动 5 分钟',
   cooldown: '慢走 + 小腿拉伸 5 分钟，避免突然停下',
   stopSigns: '胸痛、胸闷、晕厥、明显心悸、异常气短或血压 ≥180/110 时立即停止',
@@ -99,6 +101,7 @@ const campStudents = computed(() => {
     return account?.campIds?.includes(activeCampId.value!);
   });
 });
+const flowStudent = computed(() => campStudents.value[0] || null);
 
 // 按营期过滤运动记录
 const campExerciseRecords = computed(() =>
@@ -234,6 +237,13 @@ const selectCamp = (campId: string | null) => {
         <span class="text-xs text-gray-400">{{ campStudents.length }} 名学员</span>
       </div>
 
+      <CampFlowCard
+        v-if="flowStudent"
+        :student-id="flowStudent.id"
+        :camp-id="activeCampId"
+        :subject-name="flowStudent.name"
+      />
+
       <!-- 运动处方入口 -->
       <Card class="p-4 border border-white/70 bg-white/70 backdrop-blur-md shadow-sm">
         <div class="flex items-center gap-3">
@@ -325,7 +335,7 @@ const selectCamp = (campId: string | null) => {
                   </div>
                 </div>
               </div>
-              <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#0B5FD7]" @click.stop="openStudentChat(student.id)">
+              <button v-if="store.hasPermission('action.chat')" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#0B5FD7]" @click.stop="openStudentChat(student.id)">
                 <MessageCircle class="h-4 w-4" />
               </button>
             </div>
@@ -438,7 +448,9 @@ const selectCamp = (campId: string | null) => {
             </div>
             <div>
               <label class="text-[10px] font-bold text-gray-500">RPE 主观强度</label>
-              <input v-model="prescriptionForm.rpe" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]" />
+              <select v-model="prescriptionForm.rpe" class="mt-1.5 w-full rounded-xl border border-gray-200 bg-[#F7F9FC] px-2 py-2.5 text-xs outline-none focus:border-[#0B5FD7]">
+                <option v-for="option in RPE_PRESCRIPTION_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-2">

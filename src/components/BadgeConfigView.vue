@@ -5,7 +5,6 @@ import { NavBar, Card, Button } from './ui';
 import { Download, Pencil, Plus, Trash2, X, Search } from 'lucide-vue-next';
 import { Popup as VanPopup, showToast } from 'vant';
 import type { BadgeConfig, BadgeCadence, BadgeCategory, BadgeCondition } from '../types';
-import { metricValuesFor } from '../mock/data';
 import { BADGE_CATEGORY_LABEL, BADGE_CADENCE_LABEL, BADGE_CONDITION_META, describeBadgeCondition } from '../lib/badgeMeta';
 
 const store = useAppStore();
@@ -36,8 +35,8 @@ onMounted(() => {
 });
 
 const CONDITIONS_BY_CATEGORY: Record<BadgeCategory, BadgeCondition[]> = {
-  milestone: ['weight_loss_percent'],
-  achievement: ['streak_days', 'weight_loss_kg', 'fat_loss_kg', 'early_exercise_count', 'single_exercise_minutes', 'max_intensity', 'exercise_type_count'],
+  milestone: ['bp_record_days', 'low_salt_days', 'checkin_days_total'],
+  achievement: ['streak_days', 'checkin_days_total', 'bp_record_days', 'low_salt_days', 'early_exercise_count', 'single_exercise_minutes', 'max_intensity', 'exercise_type_count'],
   activity: ['checkin_days', 'all_items'],
 };
 const conditionsOf = (c: BadgeCategory) => CONDITIONS_BY_CATEGORY[c];
@@ -103,14 +102,18 @@ const coverage = (condition: BadgeCondition) => {
   const { diet, ex, wt } = campRecords.value;
   const hasAny = (id: string) => diet.some((r: any) => r.studentId === id) || ex.some((r: any) => r.studentId === id) || wt.some((r: any) => r.studentId === id);
   let n = 0;
-  if (condition === 'checkin_days' || condition === 'all_items' || condition === 'streak_days') {
+  if (condition === 'checkin_days' || condition === 'all_items' || condition === 'streak_days' || condition === 'checkin_days_total') {
     n = students.value.filter((s) => hasAny(s.id)).length;
+  } else if (condition === 'low_salt_days') {
+    n = students.value.filter((s) => diet.some((r: any) => r.studentId === s.id && r.lowSalt)).length;
+  } else if (condition === 'bp_record_days') {
+    n = students.value.filter((s) => store.getStudentBpRecords(s.id, campId.value).length > 0).length;
   } else if (condition === 'weight_loss_kg' || condition === 'weight_loss_percent') {
     n = students.value.filter((s) => wt.filter((r: any) => r.studentId === s.id).length >= 2).length;
   } else if (condition === 'fat_loss_kg') {
     const fid = fatMetricId.value;
     n = fid ? students.value.filter((s) => {
-      const v = metricValuesFor(s.id, campId.value)[fid];
+      const v = store.getEffectiveMetricValues(s.id, campId.value)[fid];
       return v && typeof v.beforeValue === 'number' && typeof v.afterValue === 'number';
     }).length : 0;
   } else {

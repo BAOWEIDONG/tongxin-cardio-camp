@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { format } from 'date-fns';
 import { useAppStore } from '../store/app';
 import { NavBar, StudentTabbar } from './ui';
-import { MessageCircle, Gift, Trophy, Bell, ChevronRight, Activity, RefreshCw, Stethoscope } from 'lucide-vue-next';
+import { MessageCircle, Gift, Trophy, Bell, ChevronRight, Activity, RefreshCw, Stethoscope, Leaf } from 'lucide-vue-next';
 import { useTabSwipe } from '../lib/useTabSwipe';
 import { usePaged } from '../composables/usePaged';
 import { useDebounced } from '../composables/useDebounced';
@@ -53,12 +53,12 @@ const campTiers = computed(() => activeCampId.value ? store.getCampRewardTiers(a
 
 interface MessageItem {
   id: string;
-  type: 'chat' | 'dietitian' | 'coach' | 'reward' | 'rank';
+  type: 'chat' | 'dietitian' | 'coach' | 'prescription' | 'reward' | 'rank';
   date: string; // yyyy-MM-dd HH:mm:ss
   title: string;
   body: string;
   unread: boolean;
-  targetView: 'diet' | 'exercise' | 'weight-checkin' | 'reward' | 'ranking' | 'camp-activities' | 'points-mall' | 'my-rewards' | 'online-chat';
+  targetView: 'diet' | 'exercise' | 'weight-checkin' | 'nutrition-prescription' | 'reward' | 'ranking' | 'camp-activities' | 'points-mall' | 'my-rewards' | 'online-chat';
   targetDate?: string; // yyyy-MM-dd for scroll-to-record
   recType?: 'diet' | 'weight' | 'exercise'; // 批注消息：点开时按此清该条 commentRead
   recordId?: string; // 批注消息对应记录 id
@@ -120,6 +120,25 @@ const chatMessages = computed<MessageItem[]>(() => {
     });
 });
 
+// ---- 营养处方发布通知 ----
+const nutritionMessages = computed<MessageItem[]>(() => {
+  const uid = store.user?.id;
+  if (!uid) return [];
+  const p = store.getStudentNutritionPrescription(uid, activeCampId.value);
+  if (!p || p.status !== 'published') return [];
+  const date = p.publishedAt || p.updatedAt;
+  return [{
+    id: `nutrition-${p.id}-${date}`,
+    type: 'prescription' as const,
+    date,
+    title: `${p.dietitianName} 发布了你的饮食处方`,
+    body: `${p.assessment}；${p.saltTarget}，${p.oilTarget}。点击查看一日食谱和用药-饮食注意事项。`,
+    unread: store.isNotifUnread(date, `nutrition-${p.id}-${date}`),
+    notifId: `nutrition-${p.id}-${date}`,
+    targetView: 'nutrition-prescription' as const,
+  }];
+});
+
 // ---- 奖励消息（领取/审核/发货/线下发放，计入「系统通知」未读） ----
 const rewardMessages = computed<MessageItem[]>(() => {
   return campClaims.value
@@ -177,9 +196,9 @@ const exchangeMessages = computed<MessageItem[]>(() => {
 
 // ---- 汇总排序 ----
 // 同一时间按优先级：批注 > 奖励/兑换（排名动态不再推送消息到消息中心）
-const typePriority: Record<string, number> = { chat: 0, dietitian: 0, coach: 0, reward: 1 };
+const typePriority: Record<string, number> = { chat: 0, dietitian: 0, coach: 0, prescription: 0, reward: 1 };
 const allMessages = computed<MessageItem[]>(() =>
-  [...chatMessages.value, ...commentMessages.value, ...rewardMessages.value, ...exchangeMessages.value]
+  [...chatMessages.value, ...commentMessages.value, ...nutritionMessages.value, ...rewardMessages.value, ...exchangeMessages.value]
     .sort((a, b) => {
       const dc = b.date.localeCompare(a.date);
       if (dc !== 0) return dc;
@@ -191,13 +210,14 @@ const allMessages = computed<MessageItem[]>(() =>
 const filters = [
   { key: 'all', label: '全部' },
   { key: 'chat', label: '医护随访' },
+  { key: 'prescription', label: '处方' },
   { key: 'dietitian', label: '营养师' },
   { key: 'coach', label: '康复师' },
   { key: 'reward', label: '系统通知' },
 ];
 const activeFilter = ref<string>('all');
 const sheetRoot = ref<HTMLElement | null>(null);
-useTabSwipe(sheetRoot, activeFilter, ['all', 'chat', 'dietitian', 'coach', 'reward']);
+useTabSwipe(sheetRoot, activeFilter, ['all', 'chat', 'prescription', 'dietitian', 'coach', 'reward']);
 const messages = computed<MessageItem[]>(() =>
   activeFilter.value === 'all'
     ? allMessages.value
@@ -207,7 +227,7 @@ const messages = computed<MessageItem[]>(() =>
 // 未读数 = 批注(营养师+教练) + 系统通知(奖励/兑换)，与各学员页底部「消息」Tab 角标口径一致
 // （共享 store.getStudentMsgUnreadCount / lib/messageSeen）。排名动态不进入角标。
 const unreadCount = computed(() =>
-  allMessages.value.filter((m) => m.unread && (m.type === 'chat' || m.type === 'dietitian' || m.type === 'coach' || m.type === 'reward')).length,
+  allMessages.value.filter((m) => m.unread && (m.type === 'chat' || m.type === 'prescription' || m.type === 'dietitian' || m.type === 'coach' || m.type === 'reward')).length,
 );
 // 长列表分页 + 防抖：默认只渲染前 20 条；打卡/批注等高频变化时列表重建合并为一次
 const debouncedMessages = useDebounced(messages, 300);
@@ -225,6 +245,8 @@ const sheetUnread = computed(() => tabUnread(activeFilter.value));
 const typeMeta = (type: MessageItem['type']) =>
   type === 'chat'
     ? { icon: Stethoscope, cls: 'bg-blue-50 text-[#0B5FD7]', tag: '医护随访', tagCls: 'bg-blue-50 text-[#0B5FD7]' }
+    : type === 'prescription'
+    ? { icon: Leaf, cls: 'bg-emerald-50 text-emerald-600', tag: '处方通知', tagCls: 'bg-emerald-50 text-emerald-600' }
     : type === 'dietitian'
     ? { icon: MessageCircle, cls: 'bg-[#0B5FD7]/10 text-[#0B5FD7]', tag: '营养师批注', tagCls: 'bg-[#0B5FD7]/10 text-[#0B5FD7]' }
     : type === 'coach'

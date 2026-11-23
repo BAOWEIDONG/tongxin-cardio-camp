@@ -2,7 +2,7 @@ import type { WeightRecord, ExerciseRecord, DietRecord, CoachActivityRecord, Rew
 import type { MetricValue } from '../lib/medicalData';
 
 /** 生成奖品展示图 SVG data URI */
-function rewardImg(name: string, emoji: string, c1: string, c2: string): string {
+export function rewardImg(name: string, emoji: string, c1: string, c2: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="400" height="400" fill="url(#g)" rx="20"/><text x="200" y="180" font-size="130" text-anchor="middle" dominant-baseline="central">${emoji}</text><text x="200" y="320" font-size="34" font-weight="bold" fill="white" text-anchor="middle" font-family="system-ui,sans-serif">${name}</text></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
@@ -73,7 +73,7 @@ for (let i = -(COMPLETE_DAYS - 1); i <= 0; i++) {
       meal: 'lunch',
       description: '香煎鸡胸肉沙拉，油醋汁',
       photos: ['https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80'],
-      dietitianComment: i < 0 && i % 4 === 0 ? '非常标准的减脂餐。' : undefined,
+      dietitianComment: i < 0 && i % 4 === 0 ? '少油少盐搭配得不错，注意优质蛋白和主食比例。' : undefined,
       dietitianCommentDate: i < 0 && i % 4 === 0 ? iso(i, '14:00:00') : undefined,
       dietitianName: i < 0 && i % 4 === 0 ? '王营养师' : undefined,
       dietitianScore: i < 0 ? 2 : undefined,
@@ -416,7 +416,7 @@ for (let i = S12_START; i <= S12_RANGE_END; i++) {
 export const MOCK_COACH_ACTIVITIES: CoachActivityRecord[] = [
   {
     id: 'a1',
-    title: '全身燃脂 HIIT',
+    title: '室内低强度间歇步行',
     description: '每天坚持15分钟，帮你快速燃烧卡路里！第一步：高抬腿；第二步：开合跳；第三步：波比跳。',
     imageUrls: [
       'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80',
@@ -458,45 +458,45 @@ export const MOCK_REWARD_TIERS: RewardTier[] = [
   {
     id: 't0',
     campId: 'camp1',
-    name: '运动跳绳',
+    name: '控盐勺套装',
     requiredDays: 5,
-    imageUrl: rewardImg('运动跳绳', '🏃', '#4A90D9', '#357ABD'),
+    imageUrl: rewardImg('控盐勺', '🧂', '#4A90D9', '#357ABD'),
     stock: 100,
     source: 'streak',
-    description: '专业计数跳绳，防滑手柄，轴承顺滑，每日燃脂好搭档',
+    description: '2g / 5g 双头控盐勺与定量油壶，帮助把每日盐和油控制在处方范围',
     deliveryMethods: ['shipped', 'in-person'],
   },
   {
     id: 't1',
     campId: 'camp1',
-    name: '运动水杯',
+    name: '保温杯',
     requiredDays: 10,
-    imageUrl: rewardImg('运动水杯', '🥤', '#0B5FD7', '#0948A8'),
+    imageUrl: rewardImg('保温杯', '🥤', '#0B5FD7', '#0948A8'),
     stock: 50,
     source: 'streak',
-    description: '便携运动水杯 500ml，BPA-free 材质，健康饮水好搭档',
+    description: '316 不锈钢保温杯 500ml，晨起服药和日常补水都方便',
     deliveryMethods: ['shipped', 'in-person'],
   },
   {
     id: 't2',
     campId: 'camp1',
-    name: '瑜伽垫',
+    name: '运动弹力带',
     requiredDays: 21,
-    imageUrl: rewardImg('瑜伽垫', '🧘', '#8B5CF6', '#7C3AED'),
+    imageUrl: rewardImg('弹力带', '🎗️', '#8B5CF6', '#7C3AED'),
     stock: 20,
     source: 'streak',
-    description: '加厚防滑瑜伽垫 6mm，TPE 环保材质，健身塑形更舒适',
+    description: '轻阻力弹力带，适合心血管康复期的下肢与上肢力量训练',
     deliveryMethods: ['shipped', 'in-person'],
   },
   {
     id: 't3',
     campId: 'camp1',
-    name: '智能体脂秤',
+    name: '分药盒与用药提醒卡',
     requiredDays: 28,
-    imageUrl: rewardImg('智能体脂秤', '⚖️', '#374151', '#1F2937'),
+    imageUrl: rewardImg('分药盒', '💊', '#374151', '#1F2937'),
     stock: 5,
     source: 'streak',
-    description: '智能体脂秤，连接手机同步记录，28 项身体数据科学管理',
+    description: '早中晚分格药盒与用药提醒卡，减少漏服、重复服药风险',
     deliveryMethods: ['shipped'],
   },
 ];
@@ -863,22 +863,22 @@ export const MOCK_ACCOUNTS: Account[] = [
 
 /** 积分商城商品 */
 export const MOCK_POINT_PRODUCTS: PointProduct[] = [
-  // 按营期分流：camp1 = 水杯/瑜伽垫/筋膜枪；camp2 = 跳绳/体脂秤/蛋白粉（camp3 新营期默认空，营养师可自行新增）
-  { id: 'pp1', name: '运动水杯', imageUrl: rewardImg('运动水杯', '🥤', '#1677FF', '#0099CC'), description: '便携运动水杯 500ml，BPA-free 材质，健康饮水好搭档', pointsRequired: 30, stock: 50, active: true, deliveryOptions: ['shipped', 'in-person'], maxExchange: 2, campId: 'camp1' },
-  { id: 'pp2', name: '跳绳', imageUrl: rewardImg('跳绳', '🤸', '#FF976A', '#FF6B35'), description: '专业计数跳绳，防滑手柄，轴承顺滑，燃脂利器', pointsRequired: 50, stock: 29, active: true, deliveryOptions: ['shipped', 'in-person'], campId: 'camp2' },
-  { id: 'pp3', name: '瑜伽垫', imageUrl: rewardImg('瑜伽垫', '🧘', '#0B5FD7', '#0A54C0'), description: '加厚防滑瑜伽垫 6mm，TPE 环保材质，运动更舒适', pointsRequired: 80, stock: 20, active: true, deliveryOptions: ['shipped'], campId: 'camp1' },
-  { id: 'pp4', name: '电子体脂秤', imageUrl: rewardImg('体脂秤', '⚖️', '#8B5CF6', '#6D28D9'), description: '智能体脂秤，13项身体数据监测，蓝牙连接APP', pointsRequired: 120, stock: 10, active: true, deliveryOptions: ['shipped'], campId: 'camp2' },
-  { id: 'pp5', name: '蛋白粉', imageUrl: rewardImg('蛋白粉', '💪', '#F59E0B', '#D97706'), description: '乳清蛋白粉 500g，运动后补充蛋白质，助力恢复', pointsRequired: 100, stock: 15, active: true, deliveryOptions: ['shipped', 'in-person'], campId: 'camp2' },
-  { id: 'pp6', name: '筋膜枪', imageUrl: rewardImg('筋膜枪', '🔫', '#EC4899', '#DB2777'), description: '迷你筋膜枪，4档力度调节，运动后放松肌肉', pointsRequired: 200, stock: 5, active: true, deliveryOptions: ['shipped'], maxExchange: 1, campId: 'camp1' },
+  // 按营期分流：奖品均适配心血管慢病管理，不再使用燃脂/塑形类商品
+  { id: 'pp1', name: '保温杯', imageUrl: rewardImg('保温杯', '🥤', '#1677FF', '#0099CC'), description: '316 不锈钢保温杯 500ml，晨起服药和日常补水更方便', pointsRequired: 30, stock: 50, active: true, deliveryOptions: ['shipped', 'in-person'], maxExchange: 2, campId: 'camp1' },
+  { id: 'pp2', name: '低钠盐健康礼盒', imageUrl: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), description: '低钠盐与控盐说明卡，使用前请先确认血钾和肾功能', pointsRequired: 50, stock: 29, active: true, deliveryOptions: ['shipped', 'in-person'], campId: 'camp2' },
+  { id: 'pp3', name: '运动弹力带', imageUrl: rewardImg('弹力带', '🎗️', '#0B5FD7', '#0A54C0'), description: '轻阻力弹力带，适合心血管康复期的居家力量训练', pointsRequired: 80, stock: 20, active: true, deliveryOptions: ['shipped'], campId: 'camp1' },
+  { id: 'pp4', name: '家用电子血压计', imageUrl: rewardImg('血压计', '🫀', '#8B5CF6', '#6D28D9'), description: '上臂式电子血压计，支持家庭血压连续记录', pointsRequired: 120, stock: 10, active: true, deliveryOptions: ['shipped'], campId: 'camp2' },
+  { id: 'pp5', name: '分药盒', imageUrl: rewardImg('分药盒', '💊', '#F59E0B', '#D97706'), description: '早中晚分格药盒，减少漏服与重复服药', pointsRequired: 100, stock: 15, active: true, deliveryOptions: ['shipped', 'in-person'], campId: 'camp2' },
+  { id: 'pp6', name: '控盐勺与定量油壶', imageUrl: rewardImg('控盐油壶', '🧂', '#EC4899', '#DB2777'), description: '控盐勺与定量油壶套装，帮助落实低盐少油处方', pointsRequired: 200, stock: 5, active: true, deliveryOptions: ['shipped'], maxExchange: 1, campId: 'camp1' },
 ];
 
 /** 积分兑换记录 */
 export const MOCK_POINT_EXCHANGES: PointExchangeRecord[] = [
   // campId 与对应商品 pp1(camp1)/pp2(camp2)/pp3(camp1) 一致，避免无归属导致营期视图口径不一致
-  { id: 'pe1', studentId: 's1', studentName: '李明', productId: 'pp1', productName: '运动水杯', productImage: rewardImg('运动水杯', '🥤', '#1677FF', '#0099CC'), pointsSpent: 30, exchangeDate: iso(-3, '14:30:00'), status: 'fulfilled', deliveryMethod: 'shipped', trackingNumber: 'SF1024567890', shipDate: iso(-2, '10:00:00'), recipientName: '李明', recipientPhone: '13800001111', recipientAddress: '北京市海淀区中关村大街1号', campId: 'camp1' },
-  { id: 'pe2', studentId: 's7', studentName: '郑爽', productId: 'pp2', productName: '跳绳', productImage: rewardImg('跳绳', '🤸', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(-1, '09:15:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '郑爽', recipientPhone: '13800000007', recipientAddress: '上海市浦东新区张江路100号', campId: 'camp2' },
-  { id: 'pe3', studentId: 's3', studentName: '张伟', productId: 'pp3', productName: '瑜伽垫', productImage: rewardImg('瑜伽垫', '🧘', '#0B5FD7', '#0A54C0'), pointsSpent: 80, exchangeDate: iso(-5, '16:20:00'), status: 'fulfilled', deliveryMethod: 'in-person', deliveredAt: iso(-4, '14:00:00'), campId: 'camp1' },
-  { id: 'pe4', studentId: 's7', studentName: '郑爽', productId: 'pp2', productName: '跳绳', productImage: rewardImg('跳绳', '🤸', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(-1, '11:00:00'), status: 'cancelled', deliveryMethod: 'shipped', recipientName: '郑爽', recipientPhone: '13800000007', recipientAddress: '上海市浦东新区张江路100号', cancelledAt: iso(-1, '12:34:00'), campId: 'camp2' },
+  { id: 'pe1', studentId: 's1', studentName: '李明', productId: 'pp1', productName: '保温杯', productImage: rewardImg('保温杯', '🥤', '#1677FF', '#0099CC'), pointsSpent: 30, exchangeDate: iso(-3, '14:30:00'), status: 'fulfilled', deliveryMethod: 'shipped', trackingNumber: 'SF1024567890', shipDate: iso(-2, '10:00:00'), recipientName: '李明', recipientPhone: '13800001111', recipientAddress: '北京市海淀区中关村大街1号', campId: 'camp1' },
+  { id: 'pe2', studentId: 's7', studentName: '郑爽', productId: 'pp2', productName: '低钠盐健康礼盒', productImage: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(-1, '09:15:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '郑爽', recipientPhone: '13800000007', recipientAddress: '上海市浦东新区张江路100号', campId: 'camp2' },
+  { id: 'pe3', studentId: 's3', studentName: '张伟', productId: 'pp3', productName: '运动弹力带', productImage: rewardImg('弹力带', '🎗️', '#0B5FD7', '#0A54C0'), pointsSpent: 80, exchangeDate: iso(-5, '16:20:00'), status: 'fulfilled', deliveryMethod: 'in-person', deliveredAt: iso(-4, '14:00:00'), campId: 'camp1' },
+  { id: 'pe4', studentId: 's7', studentName: '郑爽', productId: 'pp2', productName: '低钠盐健康礼盒', productImage: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(-1, '11:00:00'), status: 'cancelled', deliveryMethod: 'shipped', recipientName: '郑爽', recipientPhone: '13800000007', recipientAddress: '上海市浦东新区张江路100号', cancelledAt: iso(-1, '12:34:00'), campId: 'camp2' },
 ];
 
 /** 营养师手动加减分记录（补录线下打卡积分等） */
@@ -980,7 +980,7 @@ const demoMealText = {
   lunch: ['香煎鸡胸肉 + 糙米饭 + 西兰花', '清蒸鱼 + 杂粮饭 + 时蔬', '牛肉沙拉 + 藜麦', '番茄牛腩 + 半碗米饭 + 青菜'],
   dinner: ['紫薯 + 虾仁 + 生菜', '豆腐 + 菌菇汤 + 少量杂粮饭', '三文鱼 + 芦笋 + 南瓜', '鸡胸肉卷 + 蔬菜沙拉'],
 };
-const demoExerciseTypes = ['快走', '跑步', '力量训练', '跳绳', '游泳', '骑行', '瑜伽'];
+const demoExerciseTypes = ['快走', '慢跑', '弹力带训练', '游泳', '骑行', '瑜伽'];
 const dietitianComments = [
   '早餐蛋白质够，主食可以再减一点。',
   '午餐搭配标准，继续保持。',
@@ -1155,9 +1155,9 @@ if (MOCK_STUDENT_METRIC_VALUES.s13) {
 
 // 补充兑换/领取/补录，演示发放中心与学员「我的奖励」
 MOCK_POINT_EXCHANGES.push(
-  { id: 'pe5', studentId: 's13', studentName: '体验学员', productId: 'pp1', productName: '运动水杯', productImage: rewardImg('运动水杯', '🥤', '#1677FF', '#0099CC'), pointsSpent: 30, exchangeDate: iso(-1, '10:20:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '体验学员', recipientPhone: '13900000009', recipientAddress: '北京市朝阳区建国路 88 号', campId: 'camp1' },
-  { id: 'pe6', studentId: 's2', studentName: '王丽', productId: 'pp3', productName: '瑜伽垫', productImage: rewardImg('瑜伽垫', '🧘', '#0B5FD7', '#0A54C0'), pointsSpent: 80, exchangeDate: iso(-2, '15:40:00'), status: 'fulfilled', deliveryMethod: 'in-person', deliveredAt: iso(-1, '14:00:00'), campId: 'camp1' },
-  { id: 'pe7', studentId: 's18', studentName: '唐宁', productId: 'pp2', productName: '跳绳', productImage: rewardImg('跳绳', '🤸', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(0, '09:05:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '唐宁', recipientPhone: '13800000018', recipientAddress: '杭州市西湖区文三路 66 号', campId: 'camp2' },
+  { id: 'pe5', studentId: 's13', studentName: '体验学员', productId: 'pp1', productName: '保温杯', productImage: rewardImg('保温杯', '🥤', '#1677FF', '#0099CC'), pointsSpent: 30, exchangeDate: iso(-1, '10:20:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '体验学员', recipientPhone: '13900000009', recipientAddress: '北京市朝阳区建国路 88 号', campId: 'camp1' },
+  { id: 'pe6', studentId: 's2', studentName: '王丽', productId: 'pp3', productName: '运动弹力带', productImage: rewardImg('弹力带', '🎗️', '#0B5FD7', '#0A54C0'), pointsSpent: 80, exchangeDate: iso(-2, '15:40:00'), status: 'fulfilled', deliveryMethod: 'in-person', deliveredAt: iso(-1, '14:00:00'), campId: 'camp1' },
+  { id: 'pe7', studentId: 's18', studentName: '唐宁', productId: 'pp2', productName: '低钠盐健康礼盒', productImage: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(0, '09:05:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '唐宁', recipientPhone: '13800000018', recipientAddress: '杭州市西湖区文三路 66 号', campId: 'camp2' },
 );
 MOCK_REWARD_CLAIMS.push(
   { id: 'c3', campId: 'camp1', tierId: 't1', studentId: 's13', studentName: '体验学员', recipientName: '体验学员', recipientPhone: '13900000009', recipientAddress: '北京市朝阳区建国路 88 号', claimDate: iso(-1, '09:30:00'), status: 'pending', deliveryMethod: 'shipped' },
@@ -1172,9 +1172,22 @@ MOCK_MANUAL_SCORES.push(
 if (!MOCK_REWARD_TIERS.some((t) => t.campId === 'camp2')) {
   MOCK_REWARD_TIERS.push(
     { id: 't4', campId: 'camp2', name: '运动毛巾', requiredDays: 3, imageUrl: rewardImg('运动毛巾', '🧴', '#1677FF', '#0B6BCB'), stock: 60, source: 'streak', description: '速干运动毛巾，健身通勤两用', deliveryMethods: ['shipped', 'in-person'] },
-    { id: 't5', campId: 'camp2', name: '运动水杯', requiredDays: 7, imageUrl: rewardImg('运动水杯', '🥤', '#0B5FD7', '#0948A8'), stock: 40, source: 'streak', description: '便携运动水杯 500ml，BPA-free 材质', deliveryMethods: ['shipped', 'in-person'] },
-    { id: 't6', campId: 'camp2', name: '瑜伽垫', requiredDays: 14, imageUrl: rewardImg('瑜伽垫', '🧘', '#8B5CF6', '#7C3AED'), stock: 20, source: 'streak', description: '加厚防滑瑜伽垫 6mm，TPE 环保材质', deliveryMethods: ['shipped', 'in-person'] },
-    { id: 't7', campId: 'camp2', name: '智能体脂秤', requiredDays: 28, imageUrl: rewardImg('智能体脂秤', '⚖️', '#374151', '#1F2937'), stock: 5, source: 'streak', description: '智能体脂秤，连接手机同步记录', deliveryMethods: ['shipped'] },
+    { id: 't5', campId: 'camp2', name: '保温杯', requiredDays: 7, imageUrl: rewardImg('保温杯', '🥤', '#0B5FD7', '#0948A8'), stock: 40, source: 'streak', description: '316 不锈钢保温杯 500ml，方便晨起服药和日常补水', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 't6', campId: 'camp2', name: '运动弹力带', requiredDays: 14, imageUrl: rewardImg('弹力带', '🎗️', '#8B5CF6', '#7C3AED'), stock: 20, source: 'streak', description: '轻阻力弹力带，适合心血管康复期的力量训练', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 't7', campId: 'camp2', name: '家用电子血压计', requiredDays: 28, imageUrl: rewardImg('血压计', '🫀', '#374151', '#1F2937'), stock: 5, source: 'streak', description: '上臂式电子血压计，支持家庭血压连续记录', deliveryMethods: ['shipped'] },
+  );
+}
+// 趣味活动奖品：阶段达标 / 每周挑战 / 全勤抽奖（营养师后台仍可增删改）
+if (!MOCK_REWARD_TIERS.some((t) => t.source === 'activity')) {
+  MOCK_REWARD_TIERS.push(
+    { id: 'am1', campId: 'camp1', name: '家用电子血压计', requiredDays: 0, imageUrl: rewardImg('血压计', '🫀', '#0B5FD7', '#084C9E'), stock: 30, source: 'activity', activityType: 'milestone', description: '阶段一达标奖品：7 天家庭血压 + 10 天安全运动 + 10 天低盐饮食', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'am2', campId: 'camp1', name: '低钠盐健康礼盒', requiredDays: 0, imageUrl: rewardImg('低钠盐', '🧂', '#1677FF', '#0958D9'), stock: 20, source: 'activity', activityType: 'milestone', description: '阶段二达标奖品：14 天家庭血压 + 21 天安全运动 + 21 天低盐饮食', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'aw1', campId: 'camp1', name: '运动弹力带', requiredDays: 0, imageUrl: rewardImg('弹力带', '🎗️', '#FF976A', '#FF6B35'), stock: 40, source: 'activity', activityType: 'weekly', description: '完成当期运动处方与每周主题挑战', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'al1', campId: 'camp1', name: '心血管健康礼包', requiredDays: 0, imageUrl: rewardImg('健康礼包', '🎁', '#8B5CF6', '#6D28D9'), stock: 10, source: 'activity', activityType: 'lucky', description: '营期全勤抽奖特别礼品', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'am3', campId: 'camp2', name: '家用电子血压计', requiredDays: 0, imageUrl: rewardImg('血压计', '🫀', '#0B5FD7', '#084C9E'), stock: 30, source: 'activity', activityType: 'milestone', description: '阶段一达标奖品：7 天家庭血压 + 10 天安全运动 + 10 天低盐饮食', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'am4', campId: 'camp2', name: '低钠盐健康礼盒', requiredDays: 0, imageUrl: rewardImg('低钠盐', '🧂', '#1677FF', '#0958D9'), stock: 20, source: 'activity', activityType: 'milestone', description: '阶段二达标奖品：14 天家庭血压 + 21 天安全运动 + 21 天低盐饮食', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'aw2', campId: 'camp2', name: '运动弹力带', requiredDays: 0, imageUrl: rewardImg('弹力带', '🎗️', '#FF976A', '#FF6B35'), stock: 40, source: 'activity', activityType: 'weekly', description: '完成当期运动处方与每周主题挑战', deliveryMethods: ['shipped', 'in-person'] },
+    { id: 'al2', campId: 'camp2', name: '心血管健康礼包', requiredDays: 0, imageUrl: rewardImg('健康礼包', '🎁', '#8B5CF6', '#6D28D9'), stock: 10, source: 'activity', activityType: 'lucky', description: '营期全勤抽奖特别礼品', deliveryMethods: ['shipped', 'in-person'] },
   );
 }
 MOCK_REWARD_CLAIMS.push(
@@ -1182,7 +1195,7 @@ MOCK_REWARD_CLAIMS.push(
   { id: 'c6', campId: 'camp2', tierId: 't4', studentId: 's7', studentName: '郑爽', recipientName: '郑爽', recipientPhone: '13800000007', recipientAddress: '上海市浦东新区张江路 100 号', claimDate: iso(-1, '10:00:00'), status: 'shipped', trackingNumber: 'SF1088776655', shipDate: iso(0, '09:30:00'), deliveryMethod: 'shipped' },
 );
 MOCK_POINT_EXCHANGES.push(
-  { id: 'pe8', studentId: 's13', studentName: '体验学员', productId: 'pp2', productName: '跳绳', productImage: rewardImg('跳绳', '🤸', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(0, '09:10:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '体验学员', recipientPhone: '13900000009', recipientAddress: '北京市朝阳区建国路 88 号', campId: 'camp2' },
+  { id: 'pe8', studentId: 's13', studentName: '体验学员', productId: 'pp2', productName: '低钠盐健康礼盒', productImage: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), pointsSpent: 50, exchangeDate: iso(0, '09:10:00'), status: 'pending', deliveryMethod: 'shipped', recipientName: '体验学员', recipientPhone: '13900000009', recipientAddress: '北京市朝阳区建国路 88 号', campId: 'camp2' },
 );
 
 // 演示积分：饮食/运动分依赖营养师逐条评分，演示账号可用积分容易为 0，导致积分商城无法兑换。
@@ -1256,4 +1269,4 @@ export function hasCampMetricReview(campId?: string | null): boolean {
 export const DEMO_METRIC_CAMP1_STUDENT_IDS = DEMO_METRIC_CAMP1_IDS;
 
 /** 演示数据版本：用于本机旧快照的一次性增量合并（改动 mock 种子时 +1） */
-export const DEMO_SCHEMA_VERSION = 7;
+export const DEMO_SCHEMA_VERSION = 11;

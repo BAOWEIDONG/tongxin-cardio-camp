@@ -7,7 +7,6 @@ import { NavBar, Card, StudentTabbar } from './ui';
 import { TrendingDown, TrendingUp, Activity, Download, Lock, MessageCircle, Award, HeartPulse, ShieldCheck, Pill, Stethoscope } from 'lucide-vue-next';
 import BadgeInfoPopup from './BadgeInfoPopup.vue';
 import { Popup as VanPopup } from 'vant';
-import { metricValuesFor } from '../mock/data';
 import { generateStudentReport, weightTrendToSvgPoints } from '../lib/campReport';
 import { exportReport } from '../lib/exportPDF';
 import type { StudentCampReport, MetricChange, BadgeConfig, BadgeRecord } from '../types';
@@ -59,6 +58,8 @@ const canView = computed(() => true);
 const campDietRecords = computed(() => selectedCampId.value ? store.getCampDietRecords(selectedCampId.value) : store.dietRecords);
 const campExerciseRecords = computed(() => selectedCampId.value ? store.getCampExerciseRecords(selectedCampId.value) : store.exerciseRecords);
 const campWeightRecords = computed(() => selectedCampId.value ? store.getCampWeightRecords(selectedCampId.value) : store.weightRecords);
+const homeBpRecords = computed(() => store.getStudentBpRecords(studentId.value, selectedCampId.value || undefined));
+const homeBpDays = computed(() => new Set(homeBpRecords.value.map((r) => r.date.slice(0, 10))).size);
 
 // 徽章墙：与「我的徽章」完全同源 —— 里程碑 + 成就 + 活动，全部读营养师配置与同一份获得记录
 const badgeView = computed(() => {
@@ -150,7 +151,7 @@ const report = computed<StudentCampReport>(() =>
   generateStudentReport(
     { id: studentId.value, name: studentName.value, gender: studentGender.value },
     store.metricConfigs,
-    metricValuesFor(studentId.value, selectedCampId.value || campInfo.value?.id),
+    store.getEffectiveMetricValues(studentId.value, selectedCampId.value || campInfo.value?.id),
     studentDiets.value,
     studentExercises.value,
     studentWeights.value,
@@ -540,6 +541,24 @@ const exportPDF = () => {
         </div>
       </Card>
 
+      <!-- 家庭血压记录：门诊指标之外的居家过程数据 -->
+      <Card>
+        <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
+          <HeartPulse class="h-4 w-4 text-[#0B5FD7]" />
+          家庭血压记录
+          <span class="ml-auto text-[10px] font-normal text-gray-400">{{ homeBpDays }} 天 · {{ homeBpRecords.length }} 次</span>
+        </h3>
+        <div v-if="homeBpRecords.length" class="space-y-2">
+          <div v-for="r in homeBpRecords.slice(0, 5)" :key="r.id" class="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+            <span class="text-[10px] text-gray-400">{{ r.date.slice(5, 16) }}</span>
+            <span class="text-xs font-bold" :class="r.sbp >= 180 || r.dbp >= 110 ? 'text-red-600' : 'text-[#0B5FD7]'">{{ r.sbp }}/{{ r.dbp }} <span class="text-[9px] font-normal text-gray-400">mmHg</span></span>
+            <span class="max-w-[42%] truncate text-[9px] text-gray-400">{{ r.note || '家庭自测' }}</span>
+          </div>
+          <p class="text-[9px] leading-relaxed text-gray-400">家庭血压用于观察趋势和用药反应，不能替代门诊诊断；持续偏高或伴胸痛、气短请及时联系团队。</p>
+        </div>
+        <div v-else class="rounded-xl bg-blue-50/60 px-3 py-2 text-[10px] text-gray-500">本营期尚无家庭血压记录，建议晨起、睡前各测一次并连续记录 7 天。</div>
+      </Card>
+
       <!-- 徽章墙（里程碑 / 成就 / 活动，与「我的徽章」同源） -->
       <Card>
         <h3 class="font-bold text-gray-900 mb-4 flex items-center gap-2 border-b pb-2">
@@ -639,7 +658,7 @@ const exportPDF = () => {
           </div>
           <div class="rounded-xl bg-gray-50 py-3">
             <div class="text-xl font-bold text-gray-900">{{ fmt(averageRpe, 1) }}</div>
-            <div class="mt-1 text-[9px] text-gray-500">平均 RPE（1–5）</div>
+            <div class="mt-1 text-[9px] text-gray-500">平均 RPE（1–5 级）</div>
           </div>
           <div class="rounded-xl py-3" :class="safetyStopEvents > 0 ? 'bg-amber-50' : 'bg-emerald-50'">
             <div class="text-xl font-bold" :class="safetyStopEvents > 0 ? 'text-amber-600' : 'text-emerald-600'">{{ safetyStopEvents }}</div>

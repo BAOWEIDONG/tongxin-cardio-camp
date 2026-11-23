@@ -2,11 +2,13 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { showImagePreview, showToast } from 'vant';
 import type {
-  User, WeightRecord, ExerciseRecord, DietRecord, CheckinComment, CoachActivityRecord,
+  User, WeightRecord, BpRecord, ExerciseRecord, DietRecord, CheckinComment, CoachActivityRecord,
   RewardTier, RewardClaim, MealTimeConfig, MetricConfig, Camp, Account, PointProduct,
   PointExchangeRecord, ManualScoreRecord, ExchangeAuditEntry, ConfigAudit,
   RewardTierSnapshot, UnlockRecord, CampMessageEntry, BadgeConfig, BadgeRecord,
   Role, ChatThread, ChatMessage, CardioPrescription,
+  NutritionPrescription, DoctorFollowupRecord, ConsentRecord,
+  MetricStage, MetricStageSnapshot,
 } from '../types';
 import {
   MOCK_REWARD_TIERS,
@@ -25,6 +27,7 @@ import {
   MOCK_MANUAL_SCORES,
   metricValuesFor,
   DEMO_SCHEMA_VERSION,
+  rewardImg,
 } from '../mock/data';
 import * as api from '../lib/api';
 import { calculateTotalScore } from '../lib/scoring';
@@ -43,6 +46,7 @@ import {
   uniquePermissions,
 } from '../lib/permissions';
 import { loadMsgSeenState, saveMsgSeenState, systemMsgUnread } from '../lib/messageSeen';
+import { DEFAULT_CARDIO_RPE, RECOVERY_CARDIO_RPE, normalizeRpeText } from '../lib/rpe';
 
 /** 生成 yyyy-MM-dd HH:mm:ss 格式的当前时间字符串（全站统一格式） */
 function formatDateTimeStr(): string {
@@ -93,6 +97,7 @@ export type View =
   | 'dashboard'
   | 'upload'
   | 'health-profile'
+  | 'nutrition-prescription'
   | 'exercise'
   | 'diet'
   | 'weight-checkin'
@@ -160,16 +165,16 @@ export interface ActivityConfig {
 function defaultBadges(campId: string): BadgeConfig[] {
   const base = { campId, active: true };
   return [
-    // 里程碑（一次性，减重 %）
-    { ...base, id: 'm_3', category: 'milestone', name: '减重 3% 里程碑', cadence: 'day', condition: 'weight_loss_percent', threshold: 3, icon: '🎯', description: '体重较开营下降 3%' },
-    { ...base, id: 'm_5', category: 'milestone', name: '减重 5% 里程碑', cadence: 'day', condition: 'weight_loss_percent', threshold: 5, icon: '🎯', description: '体重较开营下降 5%' },
+    // 里程碑（一次性，心血管管理行为）
+    { ...base, id: 'm_lowsalt10', category: 'milestone', name: '低盐饮食 10 天', cadence: 'day', condition: 'low_salt_days', threshold: 10, icon: '🥗', description: '累计 10 天饮食记录标注低盐' },
+    { ...base, id: 'm_bp7', category: 'milestone', name: '家庭血压 7 天', cadence: 'day', condition: 'bp_record_days', threshold: 7, icon: '🫀', description: '累计 7 天完成家庭血压自测并记录' },
+    { ...base, id: 'm_all21', category: 'milestone', name: '规范管理 21 天', cadence: 'day', condition: 'checkin_days_total', threshold: 21, icon: '🎯', description: '累计 21 天完成饮食、运动或体重记录' },
     // 成就（一次性）
     { ...base, id: 'a_streak7', category: 'achievement', name: '连续打卡 7 天', cadence: 'day', condition: 'streak_days', threshold: 7, icon: '🏆', description: '最长连续全项打卡满 7 天' },
     { ...base, id: 'a_streak14', category: 'achievement', name: '连续打卡 14 天', cadence: 'day', condition: 'streak_days', threshold: 14, icon: '🔥', description: '最长连续全项打卡满 14 天' },
     { ...base, id: 'a_streak28', category: 'achievement', name: '全勤先锋', cadence: 'day', condition: 'streak_days', threshold: 28, icon: '🏅', description: '最长连续全项打卡满 28 天' },
-    { ...base, id: 'a_wl3', category: 'achievement', name: '减重 3kg', cadence: 'day', condition: 'weight_loss_kg', threshold: 3, icon: '⚖️', description: '体重下降达到 3kg' },
-    { ...base, id: 'a_wl5', category: 'achievement', name: '减重 5kg', cadence: 'day', condition: 'weight_loss_kg', threshold: 5, icon: '👑', description: '体重下降达到 5kg' },
-    { ...base, id: 'a_fat2', category: 'achievement', name: '燃脂勇士', cadence: 'day', condition: 'fat_loss_kg', threshold: 2, icon: '🔥', description: '脂肪量下降达到 2kg' },
+    { ...base, id: 'a_lowsalt15', category: 'achievement', name: '低盐践行者', cadence: 'day', condition: 'low_salt_days', threshold: 15, icon: '🧂', description: '累计 15 天饮食记录标注低盐' },
+    { ...base, id: 'a_all21', category: 'achievement', name: '持续管理 45 天', cadence: 'day', condition: 'checkin_days_total', threshold: 45, icon: '✅', description: '累计 45 天完成饮食、运动或体重记录' },
     { ...base, id: 'a_early3', category: 'achievement', name: '晨型人', cadence: 'day', condition: 'early_exercise_count', threshold: 3, icon: '🌅', description: '早 9 点前完成运动满 3 次' },
     { ...base, id: 'a_endurance60', category: 'achievement', name: '稳步耐力', cadence: 'day', condition: 'single_exercise_minutes', threshold: 20, icon: '🏅', description: '安全完成单次 20 分钟以上运动' },
     { ...base, id: 'a_intensity5', category: 'achievement', name: '安全强度', cadence: 'day', condition: 'max_intensity', threshold: 3, icon: '🛡️', description: '运动强度控制在医师建议范围内' },
@@ -180,6 +185,48 @@ function defaultBadges(campId: string): BadgeConfig[] {
     { ...base, id: 'b_week', category: 'activity', name: '本周坚持', cadence: 'week', condition: 'checkin_days', threshold: 3, icon: '🏅', description: '一周内打卡满 3 天' },
     { ...base, id: 'b_month', category: 'activity', name: '月度坚持', cadence: 'month', condition: 'checkin_days', threshold: 5, icon: '🏆', description: '一个月内打卡满 5 天' },
   ];
+}
+
+/** 生成 N 天前某个时刻的 yyyy-MM-dd HH:mm:ss，供家庭血压演示数据使用 */
+function relativeDay(daysAgo: number, time = '07:30:00'): string {
+  const d = new Date(Date.now() - daysAgo * 86400000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+}
+
+/** 演示用家庭血压：s1 已形成记录习惯，s3 为近期血压偏高预警样本 */
+function seedBpRecords(): BpRecord[] {
+  const out: BpRecord[] = [];
+  const pushSeries = (
+    studentId: string,
+    campId: string,
+    days: number,
+    sbpBase: number,
+    dbpBase: number,
+    pulseBase: number,
+  ) => {
+    for (let i = 1; i <= days; i++) {
+      const wave = (i % 3) - 1;
+      out.push({
+        id: `bp_${studentId}_${campId}_${i}`,
+        studentId,
+        campId,
+        date: relativeDay(i, i % 2 === 0 ? '21:10:00' : '07:30:00'),
+        sbp: sbpBase + wave * 3,
+        dbp: dbpBase + wave * 2,
+        pulse: pulseBase + wave,
+        note: i % 2 === 0 ? '睡前静坐 5 分钟后测量' : '晨起排空后、服药前测量',
+      });
+    }
+  };
+  pushSeries('s1', 'camp1', 10, 132, 82, 72);
+  pushSeries('s2', 'camp1', 7, 128, 80, 68);
+  pushSeries('s3', 'camp1', 9, 162, 98, 86);
+  pushSeries('s4', 'camp1', 6, 136, 84, 74);
+  pushSeries('s6', 'camp1', 8, 146, 90, 78);
+  pushSeries('s13', 'camp1', 5, 138, 86, 76);
+  pushSeries('s13', 'camp2', 5, 134, 84, 74);
+  return out;
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -219,7 +266,7 @@ export const useAppStore = defineStore('app', () => {
     },
     {
       id: 'cm8', campId: 'camp1', studentId: 's14', role: 'coach', authorName: '王教练', authorId: 'c2',
-      text: '你的有氧基础不错，建议每周加两次力量训练，把肌肉量守住，减脂会更稳。',
+      text: '你的步行基础不错，建议每周加两次弹力带力量训练，注意全程能完整说句子、无胸痛和气短。',
       createdAt: '2026-11-02 19:30:00',
     },
   ]);
@@ -361,6 +408,7 @@ export const useAppStore = defineStore('app', () => {
   const questionnaireAnswered = ref(false);
   const students = ref<typeof MOCK_STUDENTS>([...MOCK_STUDENTS]);
   const weightRecords = ref<WeightRecord[]>([...MOCK_WEIGHT_RECORDS]);
+  const bpRecords = ref<BpRecord[]>(seedBpRecords());
   const exerciseRecords = ref<ExerciseRecord[]>([...MOCK_EXERCISE_RECORDS]);
   const dietRecords = ref<DietRecord[]>([...MOCK_DIET_RECORDS]);
   const coachActivities = ref<CoachActivityRecord[]>([...MOCK_COACH_ACTIVITIES]);
@@ -455,15 +503,15 @@ export const useAppStore = defineStore('app', () => {
 
   function getHospitalPermissionTemplate(organization: string, role: Role): string[] {
     const configured = permissionTemplates.value[organization]?.[role];
-    return configured?.length ? configured : [...ROLE_DEFAULT_PERMISSIONS[role]];
+    // 空数组是管理员明确保存的“该角色无任何权限”，不能再回退成默认模板。
+    return Array.isArray(configured) ? uniquePermissions([...configured]) : [...ROLE_DEFAULT_PERMISSIONS[role]];
   }
 
-  /** 生效权限：平台管理员全量；机构管理员本院全量；团队成员=账号单独配置或医院角色模板 */
+  /** 生效权限：平台管理员全量；机构管理员本院全量；团队成员只跟随医院角色模板，不能跨院。 */
   function getEffectivePermissions(account?: Account | null): string[] {
     if (!account) return [];
     if (account.adminLevel === 'platform' || account.supervisor) return [...ALL_PERMISSIONS];
     if (account.adminLevel === 'org') return [...ORG_ADMIN_PERMISSIONS];
-    if (account.permissions?.length) return uniquePermissions([...account.permissions]);
     const org = resolveAccountOrganization(account);
     return org ? getHospitalPermissionTemplate(org, account.role) : [...ROLE_DEFAULT_PERMISSIONS[account.role]];
   }
@@ -717,13 +765,14 @@ export const useAppStore = defineStore('app', () => {
           const org = acc.organization
             || camps.value.find((c) => acc.campIds?.includes(c.id) && c.organization)?.organization
             || '';
+          const configured = templatePool[org]?.[acc.role];
           const effective = acc.adminLevel === 'platform' || acc.supervisor
             ? [...ALL_PERMISSIONS]
             : acc.adminLevel === 'org'
               ? [...ORG_ADMIN_PERMISSIONS]
-              : acc.permissions?.length
-                ? uniquePermissions([...acc.permissions])
-                : (templatePool[org]?.[acc.role] || ROLE_DEFAULT_PERMISSIONS[acc.role]);
+              : Array.isArray(configured)
+                ? uniquePermissions([...configured])
+                : ROLE_DEFAULT_PERMISSIONS[acc.role];
           user.value = {
             ...user.value,
             supervisor: acc.supervisor === true,
@@ -916,6 +965,48 @@ export const useAppStore = defineStore('app', () => {
     api.createWeightRecord(record).catch(() => {});
   }
 
+  /** 学员录入家庭血压；只允许本人、所属营期，并做基本数值校验。 */
+  function addBpRecord(input: Omit<BpRecord, 'id' | 'studentId'>): BpRecord | null {
+    const u = user.value;
+    if (!u || u.role !== 'student') return null;
+    if (isStudentDisabled(u.id)) return null;
+    if (!getStudentCamps(u.id).some((c) => c.id === input.campId)) return null;
+    const sbp = Number(input.sbp);
+    const dbp = Number(input.dbp);
+    if (!Number.isFinite(sbp) || !Number.isFinite(dbp)) return null;
+    if (sbp < 70 || sbp > 260 || dbp < 40 || dbp > 160 || sbp <= dbp) return null;
+    const pulse = input.pulse === null || input.pulse === undefined ? null : Number(input.pulse);
+    if (pulse !== null && (!Number.isFinite(pulse) || pulse < 30 || pulse > 220)) return null;
+    const record: BpRecord = {
+      ...input,
+      id: `bp_${u.id}_${Date.now()}`,
+      studentId: u.id,
+      sbp,
+      dbp,
+      pulse,
+    };
+    bpRecords.value = [record, ...bpRecords.value];
+    return record;
+  }
+
+  /** 学员/团队查看家庭血压；学员仅本人，团队仅本院负责营期。 */
+  function getStudentBpRecords(studentId: string, campId?: string | null): BpRecord[] {
+    const u = user.value;
+    if (!u) return [];
+    if (u.role === 'student' && studentId !== u.id) return [];
+    if (u.role !== 'student') {
+      const allowed = currentStaffCampIds();
+      if (campId && !allowed.includes(campId)) return [];
+    }
+    return bpRecords.value
+      .filter((r) => r.studentId === studentId && (!campId || r.campId === campId))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  function getLatestStudentBp(studentId: string, campId?: string | null): BpRecord | null {
+    return getStudentBpRecords(studentId, campId)[0] || null;
+  }
+
   /** 更新体重记录（营养师批注使用） */
   function updateWeightRecord(id: string, updates: Partial<WeightRecord>) {
     weightRecords.value = weightRecords.value.map((r) => (r.id === id ? { ...r, ...updates } : r));
@@ -1038,17 +1129,20 @@ export const useAppStore = defineStore('app', () => {
 
 
   function addCoachActivity(record: CoachActivityRecord) {
+    if (user.value && !hasPermission('menu.coach_activities')) return;
     coachActivities.value.push(record);
     api.createCoachActivity(record).catch(() => {});
   }
 
   function updateCoachActivity(id: string, updates: Partial<CoachActivityRecord>) {
+    if (user.value && !hasPermission('menu.coach_activities')) return;
     const idx = coachActivities.value.findIndex((a) => a.id === id);
     if (idx >= 0) coachActivities.value[idx] = { ...coachActivities.value[idx], ...updates, id };
     api.updateCoachActivity(id, updates).catch(() => {});
   }
 
   function deleteCoachActivity(id: string) {
+    if (user.value && !hasPermission('menu.coach_activities')) return;
     coachActivities.value = coachActivities.value.filter((a) => a.id !== id);
     api.deleteCoachActivity(id).catch(() => {});
   }
@@ -1134,6 +1228,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function openChatThread(threadId: string) {
+    if (!hasPermission('action.chat')) {
+      showToast('当前账号未开通团队随访查看权限');
+      return;
+    }
     const thread = getChatThread(threadId);
     if (!thread) return;
     selectedChatThreadId.value = thread.id;
@@ -1141,41 +1239,76 @@ export const useAppStore = defineStore('app', () => {
     setCurrentView('online-chat');
   }
 
+  /** 统一创建/补全会话成员：医师、康复师、营养师与学员共用同一条 thread。 */
+  function ensureChatThread(studentId: string, campId?: string | null): ChatThread | null {
+    const acc = accounts.value.find((a) => a.id === studentId && a.role === 'student' && a.active);
+    if (!acc) return null;
+    const cid = campId || acc.campIds?.[0] || camps.value[0]?.id || 'camp1';
+    const existing = chatThreads.value.find((t) => t.studentId === studentId && t.campId === cid);
+    const org = resolveAccountOrganization(acc);
+    const sameOrg = (a: Account) => !org || resolveAccountOrganization(a) === org;
+
+    if (existing) {
+      const addRoleMember = (role: Role, title: string) => {
+        if (existing.members.some((m) => m.role === role)) return;
+        const member = accounts.value.find((a) => a.role === role && a.active && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+        if (member) existing.members.push({ id: member.id, name: member.name, role, title });
+      };
+      addRoleMember('doctor', '主管医师');
+      addRoleMember('coach', '运动康复师');
+      addRoleMember('dietitian', '营养师');
+      return existing;
+    }
+
+    const doctor = accounts.value.find((a) => a.role === 'doctor' && a.active && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+    const coach = accounts.value.find((a) => a.role === 'coach' && a.active && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+    const dietitian = accounts.value.find((a) => a.role === 'dietitian' && a.active && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
+    const now = formatDateTimeStr();
+    const thread: ChatThread = {
+      id: `ct_${studentId}_${cid}`,
+      campId: cid,
+      studentId,
+      title: `${acc.name} · 心脑血管团队随访`,
+      topic: '医师、康复师、营养师与学员共同随访',
+      updatedAt: now,
+      lastReadAtByUser: {},
+      members: [
+        { id: studentId, name: acc.name, role: 'student', title: '学员' },
+        ...(doctor ? [{ id: doctor.id, name: doctor.name, role: 'doctor' as const, title: '主管医师' }] : []),
+        ...(coach ? [{ id: coach.id, name: coach.name, role: 'coach' as const, title: '运动康复师' }] : []),
+        ...(dietitian ? [{ id: dietitian.id, name: dietitian.name, role: 'dietitian' as const, title: '营养师' }] : []),
+      ],
+      messages: [
+        {
+          id: `msg_${Date.now()}`,
+          threadId: `ct_${studentId}_${cid}`,
+          senderId: 'system',
+          senderName: '随访助手',
+          senderRole: 'system',
+          date: now,
+          kind: 'system',
+          text: '团队随访会话已建立，消息将同步至健康档案并全程留痕。',
+        },
+      ],
+    };
+    chatThreads.value.push(thread);
+    return thread;
+  }
+
   /** 从患者/学员列表直接打开其团队随访；没有会话时按需创建 */
   function openChatForStudent(studentId: string, campId?: string | null) {
     if (!user.value) return;
-    if (user.value.role === 'student' && studentId !== user.value.id) return;
-    let thread = getStudentChatThread(studentId, campId);
-    if (!thread) {
-      const acc = accounts.value.find((a) => a.id === studentId && a.role === 'student');
-      if (!acc) return;
-      const cid = campId || acc.campIds?.[0] || camps.value[0]?.id || 'camp1';
-      if (user.value.role !== 'student' && !getAccessibleCamps().some((c) => c.id === cid)) return;
-      const org = resolveAccountOrganization(acc);
-      const sameOrg = (a: Account) => !org || resolveAccountOrganization(a) === org;
-      const doctor = accounts.value.find((a) => a.role === 'doctor' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
-      const coach = accounts.value.find((a) => a.role === 'coach' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
-      const dietitian = accounts.value.find((a) => a.role === 'dietitian' && sameOrg(a) && (!a.campIds || a.campIds.includes(cid)));
-      const now = formatDateTimeStr();
-      thread = {
-        id: `ct_${studentId}_${cid}_${Date.now()}`,
-        campId: cid,
-        studentId,
-        title: `${acc.name} · 心脑血管团队随访`,
-        topic: '团队在线随访',
-        updatedAt: now,
-        lastReadAtByUser: {},
-        members: [
-          { id: studentId, name: acc.name, role: 'student', title: '学员' },
-          ...(doctor ? [{ id: doctor.id, name: doctor.name, role: 'doctor' as const, title: '主管医师' }] : []),
-          ...(coach ? [{ id: coach.id, name: coach.name, role: 'coach' as const, title: '运动康复师' }] : []),
-          ...(dietitian ? [{ id: dietitian.id, name: dietitian.name, role: 'dietitian' as const, title: '营养师' }] : []),
-        ],
-        messages: [{ id: `msg_${Date.now()}`, threadId: '', senderId: 'system', senderName: '随访助手', senderRole: 'system', date: now, kind: 'system', text: '团队随访会话已建立，消息将同步至健康档案。' }],
-      };
-      thread.messages[0].threadId = thread.id;
-      chatThreads.value.push(thread);
+    if (!hasPermission('action.chat')) {
+      showToast('当前账号未开通团队随访查看权限');
+      return;
     }
+    if (user.value.role === 'student' && studentId !== user.value.id) return;
+    const acc = accounts.value.find((a) => a.id === studentId && a.role === 'student');
+    if (!acc) return;
+    const cid = campId || acc.campIds?.[0] || camps.value[0]?.id || 'camp1';
+    if (user.value.role !== 'student' && !getAccessibleCamps().some((c) => c.id === cid)) return;
+    const thread = ensureChatThread(studentId, cid);
+    if (!thread) return;
     openChatThread(thread.id);
   }
 
@@ -1271,6 +1404,301 @@ export const useAppStore = defineStore('app', () => {
     return true;
   }
 
+  // ─── 营养评估与饮食处方 ────────────────────────────────
+  function getStudentNutritionPrescription(studentId: string, campId?: string | null): NutritionPrescription | null {
+    const u = user.value;
+    if (!u) return null;
+    const camp = campId || getStudentCampId(studentId);
+    if (!camp) return null;
+    if (u.role === 'student' && studentId !== u.id) return null;
+    if (u.role !== 'student' && !currentStaffCampIds().includes(camp)) return null;
+    const list = nutritionPrescriptions.value
+      .filter((p) => p.studentId === studentId && p.campId === camp)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    if (u.role === 'student') return list.find((p) => p.status === 'published') || null;
+    return list.find((p) => p.status === 'published') || list[0] || null;
+  }
+
+  function publishNutritionPrescription(
+    input: Omit<NutritionPrescription, 'id' | 'dietitianId' | 'dietitianName' | 'status' | 'createdAt' | 'updatedAt' | 'publishedAt'>
+      & { dietitianName?: string },
+  ): NutritionPrescription | null {
+    const u = user.value;
+    if (!u || (u.role !== 'dietitian' && !isPlatformAdminUser() && !isOrgAdminUser())) return null;
+    if (!hasPermission('action.publish_nutrition')) return null;
+    if (!getAccessibleCamps().some((c) => c.id === input.campId)) return null;
+    const now = formatDateTimeStr();
+    const prev = nutritionPrescriptions.value.find(
+      (p) => p.studentId === input.studentId && p.campId === input.campId,
+    );
+    const record: NutritionPrescription = {
+      ...input,
+      id: prev?.id || `np_${input.studentId}_${Date.now()}`,
+      dietitianId: u.id,
+      dietitianName: input.dietitianName || u.name || '营养师',
+      status: 'published',
+      createdAt: prev?.createdAt || now,
+      updatedAt: now,
+      publishedAt: now,
+    };
+    nutritionPrescriptions.value = prev
+      ? nutritionPrescriptions.value.map((p) => (p.id === prev.id ? record : p))
+      : [record, ...nutritionPrescriptions.value];
+
+    // 处方发布留痕：不依赖发送消息权限，系统消息也写入团队随访。
+    const thread = ensureChatThread(input.studentId, input.campId);
+    if (thread) {
+      thread.messages.push({
+        id: `msg_np_${Date.now()}`,
+        threadId: thread.id,
+        senderId: 'system',
+        senderName: '处方助手',
+        senderRole: 'system',
+        date: now,
+        kind: 'system',
+        text: `营养师已发布个体化饮食处方：${input.saltTarget}；${input.proteinTarget}。可在健康档案查看并据此记录三餐。`,
+      });
+      thread.updatedAt = now;
+    }
+    return record;
+  }
+
+  // ─── 医师随访与干预方案落档 ─────────────────────────────
+  function getDoctorFollowups(campId?: string | null, studentId?: string | null): DoctorFollowupRecord[] {
+    const scope = campId ? [campId] : currentStaffCampIds();
+    return doctorFollowups.value
+      .filter((f) => scope.includes(f.campId) && (!studentId || f.studentId === studentId))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  function getLatestDoctorFollowup(studentId: string, campId?: string | null): DoctorFollowupRecord | null {
+    return getDoctorFollowups(campId || getStudentCampId(studentId), studentId)[0] || null;
+  }
+
+  function saveDoctorFollowup(
+    input: Omit<DoctorFollowupRecord, 'id' | 'doctorId' | 'doctorName' | 'date'>,
+  ): DoctorFollowupRecord | null {
+    const u = user.value;
+    if (!u || (u.role !== 'doctor' && !isPlatformAdminUser() && !isOrgAdminUser())) return null;
+    if (!hasPermission('action.create_followup')) return null;
+    if (!currentStaffCampIds().includes(input.campId)) return null;
+    const now = formatDateTimeStr();
+    const record: DoctorFollowupRecord = {
+      ...input,
+      id: `df_${input.studentId}_${Date.now()}`,
+      doctorId: u.id,
+      doctorName: u.name || '医师',
+      date: now,
+    };
+    doctorFollowups.value = [record, ...doctorFollowups.value];
+
+    const thread = ensureChatThread(input.studentId, input.campId);
+    if (thread) {
+      thread.messages.push({
+        id: `msg_df_${Date.now()}`,
+        threadId: thread.id,
+        senderId: 'system',
+        senderName: '随访助手',
+        senderRole: 'system',
+        date: now,
+        kind: 'system',
+        text: `【医师随访已留档】${input.type}：${input.note}${input.nextFollowupDate ? `；下次随访 ${input.nextFollowupDate}` : ''}`,
+      });
+      thread.updatedAt = now;
+    }
+    return record;
+  }
+
+  // ─── 知情同意签署留痕 ──────────────────────────────────
+  function getStudentConsent(studentId: string): ConsentRecord | null {
+    return consentRecords.value.find((c) => c.studentId === studentId) || null;
+  }
+
+  function recordStudentConsent(studentId: string, studentName: string, phone: string): ConsentRecord {
+    const existing = consentRecords.value.find((c) => c.studentId === studentId);
+    if (existing) return existing;
+    const signedAt = formatDateTimeStr();
+    const traceId = `TX-${studentId}-${phone.slice(-4)}-${signedAt.replace(/[-: ]/g, '').slice(2, 14)}`;
+    const record: ConsentRecord = {
+      id: `consent_${studentId}_${Date.now()}`,
+      studentId,
+      studentName,
+      phone,
+      protocolVersion: 'v1.0-2026-11',
+      signedAt,
+      traceId,
+    };
+    consentRecords.value = [record, ...consentRecords.value];
+    return record;
+  }
+
+  // ─── 三阶段心血管指标 ──────────────────────────────────
+  function deriveMidtermValue(before: unknown, after: unknown): number | null {
+    if (typeof before !== 'number' || typeof after !== 'number') return null;
+    const raw = before + (after - before) * 0.55;
+    const decimals = Math.abs(before - Math.round(before)) > 0.001 || Math.abs(after - Math.round(after)) > 0.001 ? 1 : 0;
+    return Number(raw.toFixed(decimals));
+  }
+
+  function getMetricStageValues(studentId: string, campId?: string | null): Record<MetricStage, Record<string, number | string | null>> {
+    const camp = campId || getStudentCampId(studentId) || 'camp1';
+    const base = metricValuesFor(studentId, camp) || {};
+    const result: Record<MetricStage, Record<string, number | string | null>> = {
+      baseline: {},
+      midterm: {},
+      closeout: {},
+    };
+    for (const [key, value] of Object.entries(base)) {
+      result.baseline[key] = value.beforeValue;
+      result.midterm[key] = deriveMidtermValue(value.beforeValue, value.afterValue);
+      result.closeout[key] = value.afterValue;
+    }
+    metricStageSnapshots.value
+      .filter((s) => s.studentId === studentId && s.campId === camp)
+      .forEach((snapshot) => {
+        result[snapshot.stage] = { ...result[snapshot.stage], ...snapshot.values };
+      });
+    return result;
+  }
+
+  /** 报告/患者列表统一读取三阶段快照：开营取 baseline，结营取 closeout。 */
+  function getEffectiveMetricValues(studentId: string, campId?: string | null) {
+    const camp = campId || getStudentCampId(studentId) || 'camp1';
+    const base = metricValuesFor(studentId, camp) || {};
+    const stages = getMetricStageValues(studentId, camp);
+    const out: Record<string, { beforeValue: number | string | null; afterValue: number | string | null }> = {};
+    for (const [key, value] of Object.entries(base)) {
+      out[key] = {
+        beforeValue: stages.baseline[key] ?? value.beforeValue ?? null,
+        afterValue: stages.closeout[key] ?? value.afterValue ?? null,
+      };
+    }
+    // 自定义指标可能只存在阶段快照里，也要纳入统一读取，避免健康档案/报告漏项。
+    Object.keys(stages.baseline).forEach((key) => {
+      if (!out[key]) out[key] = { beforeValue: stages.baseline[key], afterValue: stages.closeout[key] ?? null };
+    });
+    Object.keys(stages.closeout).forEach((key) => {
+      if (!out[key]) out[key] = { beforeValue: stages.baseline[key] ?? null, afterValue: stages.closeout[key] };
+    });
+    return out;
+  }
+
+  function saveMetricStageSnapshot(
+    studentId: string,
+    campId: string,
+    stage: MetricStage,
+    values: Record<string, number | string | null>,
+  ): MetricStageSnapshot | null {
+    const u = user.value;
+    if (!u || !hasPermission('action.manage_metrics')) return null;
+    if (!getAccessibleCamps().some((c) => c.id === campId)) return null;
+    const id = `${studentId}_${campId}_${stage}`;
+    const prev = metricStageSnapshots.value.find((s) => s.id === id);
+    const record: MetricStageSnapshot = {
+      id,
+      studentId,
+      campId,
+      stage,
+      values: { ...(prev?.values || {}), ...values },
+      updatedAt: formatDateTimeStr(),
+      updatedBy: u.name || '医护团队',
+    };
+    metricStageSnapshots.value = prev
+      ? metricStageSnapshots.value.map((s) => (s.id === id ? record : s))
+      : [record, ...metricStageSnapshots.value];
+    return record;
+  }
+
+  /** 四端共用的服务流转视图：返回已完成、当前和待处理节点 */
+  function getServiceFlow(studentId: string, campId?: string | null) {
+    const camp = campId || getStudentCampId(studentId) || 'camp1';
+    const consentDone = !!getStudentConsent(studentId) || isQuestionnaireSubmitted(studentId);
+    const riskDone = doctorFollowups.value.some(
+      (f) => f.studentId === studentId && f.campId === camp && /入营|风险评估/.test(f.type),
+    );
+    const exerciseRx = prescriptions.value
+      .filter((p) => p.studentId === studentId && p.campId === camp)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+    const nutritionRx = nutritionPrescriptions.value
+      .filter((p) => p.studentId === studentId && p.campId === camp)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
+    const hasDailyData = dietRecords.value.some((r) => r.studentId === studentId && r.campId === camp)
+      || exerciseRecords.value.some((r) => r.studentId === studentId && r.campId === camp);
+    const midtermDone = metricStageSnapshots.value.some(
+      (s) => s.studentId === studentId && s.campId === camp && s.stage === 'midterm',
+    ) || doctorFollowups.value.some(
+      (f) => f.studentId === studentId && f.campId === camp && /第\s*6\s*个月/.test(f.type),
+    );
+    const campInfo = camps.value.find((c) => c.id === camp);
+    const closeoutDone = campInfo?.status === 'ended' && !!(exerciseRx?.status === 'signed' && nutritionRx?.status === 'published');
+
+    const steps = [
+      {
+        key: 'consent', label: '入营资料与知情同意', owner: '学员 → 医师复核', status: consentDone ? 'done' : 'active',
+        mode: '线上资料 · 线下检查留档',
+        detail: consentDone ? '资料分类归档、隐私授权与签署留痕已完成' : '线上完成心脑血管专项问卷、病历/检查资料上传与知情同意；到院检查只做结果归档',
+        actionView: 'questionnaire' as const, actionLabel: '补充入营资料',
+      },
+      {
+        key: 'risk', label: '医师风险评估', owner: '主管医师', status: riskDone ? 'done' : consentDone ? 'active' : 'waiting',
+        mode: '线上复核 · 线下检查衔接',
+        detail: riskDone ? '已完成入营风险分层、运动禁忌与用药核对' : '医师在 H5 内结合病历、家庭血压、心电结果和用药完成风险分层；不模拟真实面诊与检查',
+        actionView: 'doctor-dashboard' as const, actionLabel: '进行风险评估',
+      },
+      {
+        key: 'exercise_rx', label: '运动评估与处方签署', owner: '康复师 → 医师', status:
+          exerciseRx?.status === 'signed' ? 'done' : exerciseRx ? 'active' : riskDone ? 'active' : 'waiting',
+        mode: '线上',
+        detail: exerciseRx?.status === 'signed'
+          ? `已签署：${exerciseRx.mode}，${exerciseRx.rpe}`
+          : exerciseRx ? '康复师已提交，等待医师复核签署' : '康复师待完成运动能力评估并提交处方',
+        actionView: exerciseRx?.status === 'pending_doctor' ? 'doctor-dashboard' as const : 'coach-dashboard' as const,
+        actionLabel: exerciseRx?.status === 'pending_doctor' ? '复核运动处方' : '完成运动评估',
+      },
+      {
+        key: 'nutrition_rx', label: '营养评估与饮食处方', owner: '营养师', status:
+          nutritionRx?.status === 'published' ? 'done' : riskDone ? 'active' : 'waiting',
+        mode: '线上',
+        detail: nutritionRx?.status === 'published'
+          ? `已发布：${nutritionRx.saltTarget}；${nutritionRx.proteinTarget}`
+          : nutritionRx ? '已保存草稿，待结合医师结论后发布' : '营养师待完成评估并发布个体化饮食处方',
+        actionView: 'dietitian-dashboard' as const, actionLabel: '完成营养处方',
+      },
+      {
+        key: 'management', label: '打卡、批注与团队随访', owner: '学员 + 四端团队', status:
+          consentDone && riskDone && exerciseRx?.status === 'signed' && nutritionRx?.status === 'published'
+            ? 'active' : 'waiting',
+        mode: '线上',
+        detail: hasDailyData
+          ? '四端随访已打通，饮食、运动、血压可记录并同步档案'
+          : '处方完成后进入每日打卡、逐餐批注、运动反馈与在线随访',
+        actionView: 'online-chat' as const, actionLabel: '进入团队随访',
+      },
+      {
+        key: 'midterm', label: '第 6 个月复查', owner: '医师 + 康复师', status: midtermDone ? 'done' : 'waiting',
+        mode: '线上复评 · 线下检查衔接',
+        detail: midtermDone ? '已完成阶段指标、运动复评与用药复核' : '复查血压、LDL-C、心电/心脏超声与运动能力，更新处方',
+        actionView: 'health-profile' as const, actionLabel: '查看阶段指标',
+      },
+      {
+        key: 'closeout', label: '结营评估与报告', owner: '医护团队', status: closeoutDone ? 'done' : 'waiting',
+        mode: '线上报告',
+        detail: closeoutDone ? '结营指标、依从性、风险变化与医师结论已归档' : '输出血压/血脂/心率轨迹、随访依从性与结营建议',
+        actionView: 'personal-journey' as const, actionLabel: '查看健康历程',
+      },
+    ];
+
+    const current = steps.find((s) => s.status === 'active') || steps.find((s) => s.status !== 'done') || steps[steps.length - 1];
+    return {
+      campId: camp,
+      steps,
+      currentKey: current.key,
+      currentLabel: current.label,
+      completed: steps.filter((s) => s.status === 'done').length,
+      total: steps.length,
+    };
+  }
+
   function openImagePreview(urls: string[], index: number = 0) {
     if (urls.length > 0) {
       showImagePreview({ images: urls, startPosition: index, closeable: true });
@@ -1282,12 +1710,14 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function addRewardTier(tier: RewardTier) {
+    if (user.value && !hasPermission('menu.reward_config')) return;
     rewardTiers.value.push({ ...tier, sortValue: tier.sortValue ?? 0, version: 1 });
     recordConfigAudit({ module: 'tier', action: '新增', targetName: tier.name, campId: tier.campId, after: `连续${tier.requiredDays}天 · 库存 ${tier.stock}` });
     api.createRewardTier(tier).catch(() => {});
   }
 
   function updateRewardTier(id: string, updates: Partial<RewardTier>) {
+    if (user.value && !hasPermission('menu.reward_config')) return;
     const prev = rewardTiers.value.find((t) => t.id === id);
     // 仅"配置编辑"（非系统内部扣库存）才 bump 版本 + 记配置审计；领取扣库存只改 stock 不记
     const isConfigEdit = Object.keys(updates).some((k) => k !== 'stock');
@@ -1304,6 +1734,9 @@ export const useAppStore = defineStore('app', () => {
   /** 删除奖励层级。新版口径：一旦出现资格/领取/发货/售后记录即禁止物理删除，只能下架或归档（历史以档位快照为准）。
    *  返回 {ok, reason}，由调用方提示拦截原因与连带影响。 */
   function deleteRewardTier(id: string): { ok: boolean; reason?: string } {
+    if (user.value && !hasPermission('menu.reward_config')) {
+      return { ok: false, reason: '当前账号未开通奖励规则配置权限' };
+    }
     const anyClaim = rewardClaims.value.filter((c) => c.tierId === id);
     if (anyClaim.length > 0) {
       const open = anyClaim.filter((c) => c.status === 'confirmed' || c.status === 'pending');
@@ -1507,7 +1940,7 @@ export const useAppStore = defineStore('app', () => {
         { id: 'msg_s1_2', threadId: 'ct_s1_camp1', senderId: 'system', senderName: '随访助手', senderRole: 'system', date: relativeDateTime(64), kind: 'system', text: '本次随访将同步至健康档案并全程留痕。互联网医院正式问诊需跳转第三方平台。' },
         { id: 'msg_s1_3', threadId: 'ct_s1_camp1', senderId: 's1', senderName: '李明', senderRole: 'student', date: relativeDateTime(50), text: '今天晨起血压 132/84，快走 25 分钟，能完整说话，没有胸闷。' },
         { id: 'msg_s1_4', threadId: 'ct_s1_camp1', senderId: 'd1', senderName: '王营养师', senderRole: 'dietitian', date: relativeDateTime(24), text: '饮食整体合格。今天晚餐注意少盐，酱料和加工肉先暂停，绿叶菜保持一份。' },
-        { id: 'msg_s1_5', threadId: 'ct_s1_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(20), text: '运动强度维持 RPE 11–13，不要追求大汗或冲刺。若出现胸痛、晕厥或血压持续 ≥180/110，立即停止并联系团队。' },
+        { id: 'msg_s1_5', threadId: 'ct_s1_camp1', senderId: 'dr1', senderName: '周明远 医师', senderRole: 'doctor', date: relativeDateTime(20), text: '运动强度维持 RPE 2–3 级，不要追求大汗或冲刺。若出现胸痛、晕厥或血压持续 ≥180/110，立即停止并联系团队。' },
       ],
     },
     {
@@ -1559,11 +1992,11 @@ export const useAppStore = defineStore('app', () => {
       doctorId: 'dr1',
       status: 'signed',
       mode: '室内快走 + 弹力带轻阻力训练',
-      intensity: '低至中等强度，RPE 11–13',
+      intensity: '低至中等强度',
       frequency: '5 次/周',
       duration: '20–30 分钟，可拆成 2 段',
       targetHr: '88–105 次/分（以能完整说句子为准）',
-      rpe: '11–13（轻到稍累）',
+      rpe: DEFAULT_CARDIO_RPE,
       warmup: '热身 5 分钟：慢走 + 踝泵 + 肩部活动',
       cooldown: '放松 5 分钟：慢走 + 小腿拉伸，避免突然停下',
       stopSigns: '胸痛、胸闷、晕厥、明显心悸、异常气短或血压 ≥180/110 时立即停止',
@@ -1578,11 +2011,11 @@ export const useAppStore = defineStore('app', () => {
       coachId: 'c1',
       status: 'pending_doctor',
       mode: '室内步行 + 呼吸训练',
-      intensity: '低强度，RPE 9–11',
+      intensity: '低强度',
       frequency: '医师复核前暂不安排',
       duration: '10–15 分钟',
       targetHr: '待医师确认',
-      rpe: '9–11（很轻到轻）',
+      rpe: RECOVERY_CARDIO_RPE,
       warmup: '静坐 5 分钟后测血压，再慢走 3 分钟',
       cooldown: '慢走 3 分钟 + 腹式呼吸 5 分钟',
       stopSigns: '胸痛、胸闷、头晕、视物模糊或血压 ≥180/110 立即停止',
@@ -1590,6 +2023,153 @@ export const useAppStore = defineStore('app', () => {
       createdAt: relativeDateTime(45),
     },
   ]);
+
+  // ─── 心血管专项服务闭环：营养处方 / 医师随访 / 知情同意 / 三阶段指标 ───
+  const nutritionPrescriptions = ref<NutritionPrescription[]>([
+    {
+      id: 'np_s1_camp1',
+      campId: 'camp1',
+      studentId: 's1',
+      dietitianId: 'd1',
+      dietitianName: '王营养师',
+      status: 'published',
+      assessment: '高血压合并 LDL-C 偏高。饮食记录显示外食与酱料偏多，蔬菜和全谷物不足；无肾功能异常记录。',
+      energyTarget: '1800–2000 kcal/日，优先维持体重与肌肉量',
+      proteinTarget: '60–75 g/日，鱼、蛋、豆制品和去皮禽肉轮换',
+      saltTarget: '<5 g 盐/日（约一啤酒瓶盖），酱油、蚝油、咸菜计入',
+      oilTarget: '25–30 g/日，少煎炸，改用蒸煮炖',
+      fiberTarget: '25–30 g/日，全谷物和杂豆占主食 1/3',
+      fluidTarget: '1500–1800 ml/日；如医师限制饮水则按医嘱',
+      breakfast: '燕麦牛奶粥 1 碗 + 水煮蛋 1 个 + 凉拌绿叶菜 1 小份',
+      lunch: '杂粮饭 1 小碗 + 清蒸鱼 1 份 + 焯青菜 1 大盘 + 少盐汤',
+      dinner: '荞麦面或杂粮粥 + 豆腐/鸡胸肉 + 两种蔬菜，晚餐不额外加盐',
+      snack: '无糖酸奶或一小把原味坚果；避免饼干、蜜饯和加工肉',
+      restrictions: '他汀期间避免大量西柚汁；服用华法林时绿叶菜摄入保持稳定；不自行使用低钠盐替代，先与医师核对血钾和肾功能。',
+      followupPlan: '每周查看 2 次饮食记录；第 2 周复核低盐执行情况；第 6 个月复查血脂与肾功能后调整。',
+      createdAt: relativeDateTime(1800),
+      updatedAt: relativeDateTime(1700),
+      publishedAt: relativeDateTime(1700),
+    },
+    {
+      id: 'np_s2_camp1',
+      campId: 'camp1',
+      studentId: 's2',
+      dietitianId: 'd1',
+      dietitianName: '王营养师',
+      status: 'published',
+      assessment: '颈动脉斑块合并血脂异常。主食精细、蔬菜量可提升，饮食总体清淡但蛋白质分布不均。',
+      energyTarget: '1700–1900 kcal/日，避免短期内快速减重',
+      proteinTarget: '60 g/日以上，每餐都要有优质蛋白',
+      saltTarget: '<5 g/日，少喝汤底和咸味酱汁',
+      oilTarget: '25 g/日，优先橄榄油、菜籽油',
+      fiberTarget: '25 g/日，增加绿叶菜、菌菇和燕麦',
+      fluidTarget: '1500–1800 ml/日',
+      breakfast: '全麦面包 2 片 + 鸡蛋 1 个 + 无糖豆浆',
+      lunch: '杂粮饭 + 去皮禽肉 + 两份蔬菜',
+      dinner: '清蒸鱼 + 豆腐 + 绿叶菜 + 少量杂粮',
+      snack: '原味坚果 10 g 或无糖酸奶',
+      restrictions: '他汀期间避免大量西柚汁；少吃动物内脏和油炸食品；如服抗凝药，绿叶菜量保持稳定。',
+      followupPlan: '每周 2 次饮食复盘；第 6 个月复查血脂前 2 周强化低脂饮食记录。',
+      createdAt: relativeDateTime(1600),
+      updatedAt: relativeDateTime(1500),
+      publishedAt: relativeDateTime(1500),
+    },
+    {
+      id: 'np_s3_camp1',
+      campId: 'camp1',
+      studentId: 's3',
+      dietitianId: 'd1',
+      dietitianName: '王营养师',
+      status: 'draft',
+      assessment: '高血压 2 级、近期血压波动，合并超重。需先配合医师复核，再确定能量缺口与运动配合。',
+      energyTarget: '暂按 1800 kcal/日，待医师评估后调整',
+      proteinTarget: '65–80 g/日，避免高盐加工肉',
+      saltTarget: '<5 g/日，现阶段不自行使用低钠盐',
+      oilTarget: '25 g/日',
+      fiberTarget: '25–30 g/日',
+      fluidTarget: '1500–1800 ml/日，结合心肾功能',
+      breakfast: '燕麦粥 + 鸡蛋 + 无盐蔬菜',
+      lunch: '杂粮饭 + 清蒸鱼/鸡胸 + 两份蔬菜',
+      dinner: '豆腐 + 蔬菜 + 少量主食，汤不喝汤底',
+      snack: '无糖酸奶；血压未稳定前不安排咖啡因饮料',
+      restrictions: '暂不自行使用低钠盐；不饮酒；避免浓茶、咖啡和能量饮料；服药时间与营养师确认。',
+      followupPlan: '待医师风险评估完成后发布；发布后 3 天内电话/IM 复核执行情况。',
+      createdAt: relativeDateTime(1440),
+      updatedAt: relativeDateTime(1440),
+    },
+  ]);
+
+  const doctorFollowups = ref<DoctorFollowupRecord[]>([
+    {
+      id: 'df_s1_risk',
+      campId: 'camp1',
+      studentId: 's1',
+      doctorId: 'dr1',
+      doctorName: '周明远',
+      type: '入营风险评估',
+      date: relativeDateTime(1700),
+      riskLevel: '中',
+      note: '高血压合并 LDL-C 偏高。无近期胸痛、晕厥或住院史，可进入低至中等强度运动，先完成处方复核。',
+      medicationReview: '继续现有降压、他汀方案，不自行调整；复核血压和肝功能记录。',
+      nextFollowupDate: formatDateTimeStr().slice(0, 10),
+      referral: '暂不需要转诊；如静息血压 ≥180/110 或出现胸痛，立即到院。',
+    },
+    {
+      id: 'df_s1_week2',
+      campId: 'camp1',
+      studentId: 's1',
+      doctorId: 'dr1',
+      doctorName: '周明远',
+      type: '第 2 周处方复核',
+      date: relativeDateTime(20),
+      riskLevel: '中',
+      note: '家庭血压 132/84，快走 25 分钟无胸闷。维持当前运动强度，继续记录晨起血压。',
+      medicationReview: '按原处方服药，观察有无头晕和体位性低血压。',
+      nextFollowupDate: formatDateTimeStr().slice(0, 10),
+    },
+    {
+      id: 'df_s3_alert',
+      campId: 'camp1',
+      studentId: 's3',
+      doctorId: 'dr1',
+      doctorName: '周明远',
+      type: '血压预警随访',
+      date: relativeDateTime(3),
+      riskLevel: '高',
+      note: '连续 3 天晨起血压 ≥160/95，先暂停中高强度运动，记录早晚血压并到院复核。',
+      medicationReview: '不得自行加药或停用降压药；到院时携带家庭血压记录和现有药盒。',
+      nextFollowupDate: formatDateTimeStr().slice(0, 10),
+      referral: '建议到院复核，必要时转心内科专科门诊。',
+    },
+    {
+      id: 'df_s2_lipid',
+      campId: 'camp1',
+      studentId: 's2',
+      doctorId: 'dr1',
+      doctorName: '周明远',
+      type: '血脂复查随访',
+      date: relativeDateTime(700),
+      riskLevel: '中',
+      note: 'LDL-C 2.5 mmol/L，已接近斑块人群管理目标。继续低脂饮食和运动处方。',
+      medicationReview: '继续按处方服用他汀，不自行停药；关注肌痛和肝功能。',
+      nextFollowupDate: formatDateTimeStr().slice(0, 10),
+    },
+  ]);
+
+  const consentRecords = ref<ConsentRecord[]>([
+    {
+      id: 'consent_s1_v1',
+      studentId: 's1',
+      studentName: '李明',
+      phone: '13800000001',
+      protocolVersion: 'v1.0-2026-11',
+      signedAt: relativeDateTime(2200),
+      traceId: 'TX-CONSENT-S1-20261120',
+    },
+  ]);
+
+  /** 阶段指标快照只保存人工录入/修订过的值；未录入时从演示指标自动生成 */
+  const metricStageSnapshots = ref<MetricStageSnapshot[]>([]);
 
   // ============================================================================
   //  业务数据 localStorage 持久化（纯前端 demo：业务数据默认只在内存，刷新/跨会话即丢）
@@ -1600,18 +2180,20 @@ export const useAppStore = defineStore('app', () => {
   //  边界：demo 无共享后端，跨浏览器/设备仍无法同步；这里仅解决"同浏览器刷新/换号"的丢数。
   // ============================================================================
   const bizSources = [
-    students, weightRecords, exerciseRecords, dietRecords, coachActivities,
+    students, weightRecords, bpRecords, exerciseRecords, dietRecords, coachActivities,
     rewardTiers, rewardClaims, unlockRecords, campMessageList, metricConfigs, camps, accounts,
     pointProducts, pointExchanges, manualScoreRecords,
     activityConfigByCamp, mealTimeConfigByCamp,
     badgeConfigsByCamp, badgeRecords, chatThreads, prescriptions, permissionTemplates,
+    nutritionPrescriptions, doctorFollowups, consentRecords, metricStageSnapshots,
   ];
   const bizNames = [
-    'students', 'weightRecords', 'exerciseRecords', 'dietRecords', 'coachActivities',
+    'students', 'weightRecords', 'bpRecords', 'exerciseRecords', 'dietRecords', 'coachActivities',
     'rewardTiers', 'rewardClaims', 'unlockRecords', 'campMessageList', 'metricConfigs', 'camps', 'accounts',
     'pointProducts', 'pointExchanges', 'manualScoreRecords',
     'activityConfigByCamp', 'mealTimeConfigByCamp',
     'badgeConfigsByCamp', 'badgeRecords', 'chatThreads', 'prescriptions', 'permissionTemplates',
+    'nutritionPrescriptions', 'doctorFollowups', 'consentRecords', 'metricStageSnapshots',
   ] as const;
   function persistBiz() {
     const snap: Record<string, unknown> = {};
@@ -1650,6 +2232,23 @@ export const useAppStore = defineStore('app', () => {
         if ((a.id === 'd1' || a.id === 'd2') && a.adminLevel === 'org') delete a.adminLevel;
       });
     }
+    // 运动处方与随访文案统一为心血管营 1–5 级 RPE。
+    // 每次升级都再跑一次，兼容从旧 versionall 快照直接迁入的数据。
+    prescriptions.value = prescriptions.value.map((prescription) => ({
+      ...prescription,
+      intensity: normalizeRpeText(prescription.intensity),
+      rpe: normalizeRpeText(prescription.rpe),
+      note: normalizeRpeText(prescription.note),
+      warmup: normalizeRpeText(prescription.warmup),
+      cooldown: normalizeRpeText(prescription.cooldown),
+    }));
+    chatThreads.value = chatThreads.value.map((thread) => ({
+      ...thread,
+      messages: thread.messages.map((message) => ({
+        ...message,
+        text: normalizeRpeText(message.text),
+      })),
+    }));
     // 记录：清掉未来/开营前脏数据；v3 起用线性体重历史替换体验学员第一期旧体重
     if (fromVersion < 4) {
       weightRecords.value = weightRecords.value.filter((r) => !(r.studentId === 's13' && r.campId === 'camp1'));
@@ -1657,6 +2256,13 @@ export const useAppStore = defineStore('app', () => {
     dietRecords.value = dietRecords.value.filter((r) => validDate(r.date, r.campId));
     exerciseRecords.value = exerciseRecords.value.filter((r) => validDate(r.date, r.campId));
     weightRecords.value = weightRecords.value.filter((r) => validDate(r.date, r.campId));
+    bpRecords.value = bpRecords.value.filter((r) => validDate(r.date, r.campId));
+    if (fromVersion < 10) {
+      const bpSet = new Set(bpRecords.value.map((r) => r.id));
+      seedBpRecords().forEach((r) => {
+        if (!bpSet.has(r.id)) bpRecords.value.push({ ...r });
+      });
+    }
     const dietKey = (r: DietRecord) => `${r.studentId}|${r.campId}|${r.date.slice(0, 10)}|${r.meal}`;
     const dietSet = new Set(dietRecords.value.map(dietKey));
     MOCK_DIET_RECORDS.forEach((r) => { if (!dietSet.has(dietKey(r))) { dietRecords.value.push({ ...r }); dietSet.add(dietKey(r)); } });
@@ -1671,6 +2277,64 @@ export const useAppStore = defineStore('app', () => {
     MOCK_REWARD_CLAIMS.forEach((c) => { if (!rewardClaims.value.some((x) => x.id === c.id)) rewardClaims.value.push({ ...c }); });
     MOCK_POINT_EXCHANGES.forEach((e) => { if (!pointExchanges.value.some((x) => x.id === e.id)) pointExchanges.value.push({ ...e }); });
     MOCK_MANUAL_SCORES.forEach((m) => { if (!manualScoreRecords.value.some((x) => x.id === m.id)) manualScoreRecords.value.push({ ...m }); });
+
+    // v11：清除减重/燃脂类奖品与徽章；保留历史 id，避免破坏领取、兑换和审计记录。
+    if (fromVersion < 11) {
+      const tierPatch: Record<string, { name: string; imageUrl: string; description: string }> = {
+        t0: { name: '控盐勺套装', imageUrl: rewardImg('控盐勺', '🧂', '#4A90D9', '#357ABD'), description: '2g / 5g 双头控盐勺与定量油壶，帮助落实低盐少油处方' },
+        t1: { name: '保温杯', imageUrl: rewardImg('保温杯', '🥤', '#0B5FD7', '#0948A8'), description: '316 不锈钢保温杯 500ml，晨起服药和日常补水更方便' },
+        t2: { name: '运动弹力带', imageUrl: rewardImg('弹力带', '🎗️', '#8B5CF6', '#7C3AED'), description: '轻阻力弹力带，适合心血管康复期力量训练' },
+        t3: { name: '分药盒与用药提醒卡', imageUrl: rewardImg('分药盒', '💊', '#374151', '#1F2937'), description: '早中晚分格药盒与提醒卡，减少漏服和重复服药' },
+        t5: { name: '保温杯', imageUrl: rewardImg('保温杯', '🥤', '#0B5FD7', '#0948A8'), description: '316 不锈钢保温杯 500ml，晨起服药和日常补水更方便' },
+        t6: { name: '运动弹力带', imageUrl: rewardImg('弹力带', '🎗️', '#8B5CF6', '#7C3AED'), description: '轻阻力弹力带，适合心血管康复期力量训练' },
+        t7: { name: '家用电子血压计', imageUrl: rewardImg('血压计', '🫀', '#374151', '#1F2937'), description: '上臂式电子血压计，支持家庭血压连续记录' },
+      };
+      rewardTiers.value = rewardTiers.value.map((tier) => tierPatch[tier.id] ? { ...tier, ...tierPatch[tier.id] } : tier);
+      const productPatch: Record<string, { name: string; imageUrl: string; description: string }> = {
+        pp1: { name: '保温杯', imageUrl: rewardImg('保温杯', '🥤', '#1677FF', '#0099CC'), description: '316 不锈钢保温杯 500ml，晨起服药和日常补水更方便' },
+        pp2: { name: '低钠盐健康礼盒', imageUrl: rewardImg('低钠盐', '🧂', '#FF976A', '#FF6B35'), description: '低钠盐与控盐说明卡，使用前请先确认血钾和肾功能' },
+        pp3: { name: '运动弹力带', imageUrl: rewardImg('弹力带', '🎗️', '#0B5FD7', '#0A54C0'), description: '轻阻力弹力带，适合心血管康复期居家力量训练' },
+        pp4: { name: '家用电子血压计', imageUrl: rewardImg('血压计', '🫀', '#8B5CF6', '#6D28D9'), description: '上臂式电子血压计，支持家庭血压连续记录' },
+        pp5: { name: '分药盒', imageUrl: rewardImg('分药盒', '💊', '#F59E0B', '#D97706'), description: '早中晚分格药盒，减少漏服和重复服药' },
+        pp6: { name: '控盐勺与定量油壶', imageUrl: rewardImg('控盐油壶', '🧂', '#EC4899', '#DB2777'), description: '控盐勺与定量油壶套装，帮助落实低盐少油处方' },
+      };
+      pointProducts.value = pointProducts.value.map((product) => productPatch[product.id] ? { ...product, ...productPatch[product.id] } : product);
+      pointExchanges.value = pointExchanges.value.map((exchange) => {
+        const patch = productPatch[exchange.productId];
+        return patch ? { ...exchange, productName: patch.name, productImage: patch.imageUrl } : exchange;
+      });
+      unlockRecords.value = unlockRecords.value.map((record) => {
+        const patch = tierPatch[record.tierId];
+        return patch
+          ? { ...record, snapshot: { ...record.snapshot, name: patch.name, imageUrl: patch.imageUrl } }
+          : record;
+      });
+
+      const legacyBadges = new Set(['m_3', 'm_5', 'a_wl3', 'a_wl5', 'a_fat2']);
+      Object.keys(badgeConfigsByCamp.value).forEach((campId) => {
+        const current = badgeConfigsByCamp.value[campId] || [];
+        const cleaned = current.filter((badge) =>
+          !legacyBadges.has(badge.id) && !/减重|减脂|燃脂|体脂/.test(`${badge.name}${badge.description || ''}`)
+        );
+        const defaults = defaultBadges(campId);
+        const existingIds = new Set(cleaned.map((badge) => badge.id));
+        defaults.forEach((badge) => { if (!existingIds.has(badge.id)) cleaned.push(badge); });
+        badgeConfigsByCamp.value[campId] = cleaned;
+      });
+      badgeRecords.value = badgeRecords.value.filter((record) => !legacyBadges.has(record.badgeId));
+      exerciseRecords.value = exerciseRecords.value.map((record) => ({
+        ...record,
+        type: record.type === '跳绳' ? '快走' : record.type,
+        notes: /燃脂|减脂|体脂/.test(record.notes || '') ? '按运动处方完成，能完整说句子，无胸痛气短' : record.notes,
+      }));
+      coachActivities.value = coachActivities.value.map((activity) => ({
+        ...activity,
+        title: /燃脂|HIIT/i.test(activity.title) ? '室内低强度间歇步行' : activity.title,
+        description: /燃脂|减脂|暴汗/.test(activity.description || '')
+          ? '在医师签署的运动处方范围内完成低至中等强度步行，保持能完整说句子；出现胸痛、胸闷或异常气短立即停止。'
+          : activity.description,
+      }));
+    }
   }
   /** 从 localStorage 回读业务数据并覆盖各 ref；无可用数据返回 false */
   function restoreBiz(): boolean {
@@ -1703,6 +2367,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function addPointProduct(product: PointProduct) {
+    if (user.value && !hasPermission('menu.reward_config')) return;
     pointProducts.value.push({ ...product, sortValue: product.sortValue ?? 0, productVersion: 1 });
     recordConfigAudit({ module: 'product', action: '新增', targetName: product.name, campId: product.campId, after: `${product.pointsRequired}积分 · 库存 ${product.stock}` });
     api.createPointProduct(product).catch(() => {});
@@ -1711,6 +2376,7 @@ export const useAppStore = defineStore('app', () => {
   /** 更新商品。仅"配置编辑"（含 active 上/下架、不含系统内部扣/加库存）才递增版本号 + 写配置审计；
    *  兑换/取消扣加库存只改 stock 不 bump 版本（历史订单版本以生成时快照为准）。 */
   function updatePointProduct(id: string, updates: Partial<PointProduct>) {
+    if (user.value && !hasPermission('menu.reward_config')) return;
     const prev = pointProducts.value.find((p) => p.id === id);
     const isConfigEdit = 'active' in updates || Object.keys(updates).some((k) => k !== 'stock');
     pointProducts.value = pointProducts.value.map((p) =>
@@ -1730,6 +2396,9 @@ export const useAppStore = defineStore('app', () => {
   /** 删除积分商品。存在非取消（pending/fulfilled）兑换记录时拒绝删除。
    *  返回 {ok, reason}，由调用方提示拦截原因与连带影响。 */
   function deletePointProduct(id: string): { ok: boolean; reason?: string } {
+    if (user.value && !hasPermission('menu.reward_config')) {
+      return { ok: false, reason: '当前账号未开通积分商城配置权限' };
+    }
     const open = pointExchanges.value.filter((e) => e.productId === id && e.status !== 'cancelled');
     if (open.length > 0) {
       return { ok: false, reason: `该商品已有 ${open.length} 条非取消兑换记录（待发货/已发货），无法删除` };
@@ -1765,11 +2434,13 @@ export const useAppStore = defineStore('app', () => {
 
   /** 营养师手动加减分（乐观更新 + fire-and-forget 持久化，同 addDietRecord 模式） */
   function addManualScoreRecord(record: ManualScoreRecord) {
+    if (user.value && !hasPermission('action.manual_score')) return;
     if (isStudentDisabled(record.studentId)) return; // 退营学员禁止手动加减分（与其余写方法口径一致）
     manualScoreRecords.value.push(record);
     api.createManualScoreRecord(record).catch(() => {});
   }
   function deleteManualScoreRecord(id: string) {
+    if (user.value && !hasPermission('action.manual_score')) return;
     manualScoreRecords.value = manualScoreRecords.value.filter((r) => r.id !== id);
     api.deleteManualScoreRecord(id).catch(() => {});
   }
@@ -1963,16 +2634,19 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function addMetricConfig(config: MetricConfig) {
+    if (user.value && !hasPermission('menu.metric_config')) return;
     metricConfigs.value.push(config);
     api.createMetricConfig(config).catch(() => {});
   }
 
   function updateMetricConfig(id: string, updates: Partial<MetricConfig>) {
+    if (user.value && !hasPermission('menu.metric_config')) return;
     metricConfigs.value = metricConfigs.value.map((c) => (c.id === id ? { ...c, ...updates } : c));
     api.updateMetricConfig(id, updates).catch(() => {});
   }
 
   function deleteMetricConfig(id: string) {
+    if (user.value && !hasPermission('menu.metric_config')) return;
     metricConfigs.value = metricConfigs.value.filter((c) => c.id !== id);
     api.deleteMetricConfig(id).catch(() => {});
   }
@@ -1988,10 +2662,12 @@ export const useAppStore = defineStore('app', () => {
     api.createCamp(camp).catch(() => {});
   }
   function updateCamp(id: string, updates: Partial<Camp>) {
+    if (user.value && !hasPermission('action.create_camp')) return;
     camps.value = camps.value.map((c) => (c.id === id ? { ...c, ...updates } : c));
     api.updateCamp(id, updates).catch(() => {});
   }
   function deleteCamp(id: string) {
+    if (user.value && !hasPermission('action.create_camp')) return;
     camps.value = camps.value.filter((c) => c.id !== id);
     api.deleteCamp(id).catch(() => {});
   }
@@ -2006,6 +2682,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function setBadgeConfigs(campId: string, list: BadgeConfig[]) {
+    if (user.value && !hasPermission('menu.badge_config')) return;
     badgeConfigsByCamp.value = { ...badgeConfigsByCamp.value, [campId]: list };
   }
 
@@ -2033,6 +2710,7 @@ export const useAppStore = defineStore('app', () => {
     const diet = dietRecords.value.filter((r) => r.campId === campId);
     const ex = exerciseRecords.value.filter((r) => r.campId === campId);
     const wt = weightRecords.value.filter((r) => r.campId === campId);
+    const bp = bpRecords.value.filter((r) => r.campId === campId);
 
     // 活动徽章（周期、可重复）
     const activity = computeBadgeRecords(configs, studentList, diet, ex, wt, camp);
@@ -2046,6 +2724,7 @@ export const useAppStore = defineStore('app', () => {
       const sd = diet.filter((r) => r.studentId === s.id);
       const se = ex.filter((r) => r.studentId === s.id);
       const sw = wt.filter((r) => r.studentId === s.id);
+      const sb = bp.filter((r) => r.studentId === s.id);
       const report = generateStudentReport(
         { id: s.id, name: s.name, gender: s.gender },
         metricConfigs.value,
@@ -2060,6 +2739,9 @@ export const useAppStore = defineStore('app', () => {
         weightLossKg: report.summary.weightLossKg,
         weightLossPercent: report.summary.weightLossPercent,
         fatLossKg: report.summary.bodyFatLossKg,
+        totalCheckinDays: report.checkinStats.totalCheckinDays,
+        bpRecords: sb,
+        dietRecords: sd,
         exerciseRecords: se,
         earnedAt: today,
       });
@@ -2215,6 +2897,9 @@ export const useAppStore = defineStore('app', () => {
   function getCampWeightRecords(campId: string) {
     return weightRecords.value.filter((r) => r.campId === campId);
   }
+  function getCampBpRecords(campId: string) {
+    return bpRecords.value.filter((r) => r.campId === campId);
+  }
   function getCampRewardTiers(campId: string) {
     return rewardTiers.value.filter((t) => !t.campId || t.campId === campId);
   }
@@ -2281,13 +2966,16 @@ export const useAppStore = defineStore('app', () => {
       .filter((a) => a.role === 'student' && a.active && a.campIds?.some((id) => scope.includes(id)))
       .map((a) => {
         const cid = a.campIds?.find((id) => scope.includes(id)) || scope[0];
-        const values = metricValuesFor(a.id, cid) || {};
+        const values = getEffectiveMetricValues(a.id, cid) || {};
         const val = (key: string) => {
           const item = values[key];
           return Number(item?.afterValue ?? item?.beforeValue ?? 0) || 0;
         };
-        const sbp = val('mc_cv_sbp');
-        const dbp = val('mc_cv_dbp');
+        const latestHomeBp = bpRecords.value
+          .filter((r) => r.studentId === a.id && r.campId === cid)
+          .sort((x, y) => y.date.localeCompare(x.date))[0];
+        const sbp = latestHomeBp?.sbp ?? val('mc_cv_sbp');
+        const dbp = latestHomeBp?.dbp ?? val('mc_cv_dbp');
         const ldl = val('mc_bl_ldl');
         let score = 0;
         if (sbp >= 160 || dbp >= 100) score += 2;
@@ -2305,7 +2993,7 @@ export const useAppStore = defineStore('app', () => {
           risk: score >= 3 ? '高' as const : score >= 1 ? '中' as const : '低' as const,
           bp: sbp && dbp ? `${sbp}/${dbp}` : '--',
           ldl: ldl ? ldl.toFixed(1) : '--',
-          hr: val('mc_cv_hr') || '--',
+          hr: (latestHomeBp?.pulse ?? val('mc_cv_hr')) || '--',
           condition: CARDIO_CONDITIONS[a.id] || '心血管风险随访',
         };
       });
@@ -2378,6 +3066,7 @@ export const useAppStore = defineStore('app', () => {
     questionnaireAnswered,
     students,
     weightRecords,
+    bpRecords,
     exerciseRecords,
     dietRecords,
     coachActivities,
@@ -2386,6 +3075,10 @@ export const useAppStore = defineStore('app', () => {
     selectedChatThreadId,
     chatThreads,
     prescriptions,
+    nutritionPrescriptions,
+    doctorFollowups,
+    consentRecords,
+    metricStageSnapshots,
     getMyChatThreads,
     getChatThread,
     getStudentChatThread,
@@ -2403,6 +3096,17 @@ export const useAppStore = defineStore('app', () => {
     submitCardioPrescription,
     signCardioPrescription,
     rejectCardioPrescription,
+    getStudentNutritionPrescription,
+    publishNutritionPrescription,
+    getDoctorFollowups,
+    getLatestDoctorFollowup,
+    saveDoctorFollowup,
+    getStudentConsent,
+    recordStudentConsent,
+    getMetricStageValues,
+    getEffectiveMetricValues,
+    saveMetricStageSnapshot,
+    getServiceFlow,
     selectedDateStr,
     attendanceBoardDate,
     coachFocusRecordId,
@@ -2423,6 +3127,9 @@ export const useAppStore = defineStore('app', () => {
     setQuestionnaireAnswered,
     addWeightRecord,
     updateWeightRecord,
+    addBpRecord,
+    getStudentBpRecords,
+    getLatestStudentBp,
     addExerciseRecord,
     updateExerciseRecord,
     addDietRecord,
@@ -2477,6 +3184,7 @@ export const useAppStore = defineStore('app', () => {
     getCampExerciseRecords,
     getCampManualScoreRecords,
     getCampWeightRecords,
+    getCampBpRecords,
     getCampRewardTiers,
     getCampRewardClaims,
     mealTimeConfigByCamp,

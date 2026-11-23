@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onActivated, onDeactivated, onBeforeUnmount, nextTick } from 'vue';
 import { format } from 'date-fns';
 import { useAppStore, questionnaireStorageKey } from '../store/app';
-import { MOCK_METRIC_VALUES, metricValuesFor } from '../mock/data';
+import { MOCK_METRIC_VALUES } from '../mock/data';
 import { NavBar, Card, Button, ChartRulePopup, CheckinComments } from './ui';
 import { recordComments } from '../lib/comments';
 import WeightTrendChart from './ui/WeightTrendChart.vue';
@@ -53,26 +53,26 @@ const campWeightRecords = computed(() => {
 
 // 快捷回复模板
 const DIET_TEMPLATES = [
-  '搭配很均衡，继续保持！',
-  '蛋白质摄入充足，很好',
-  '建议增加优质蛋白，如鸡蛋、鱼虾、豆制品',
-  '蔬菜量偏少，建议每餐加一份绿叶菜',
-  '主食偏多，建议减半，用粗粮替代',
-  '油脂偏多，建议清淡少油',
-  '这一餐偏少，记得按时吃饭哦',
+  '这餐低盐做得不错，继续保持',
+  '建议减少酱料、咸菜和加工肉，汤尽量不喝汤底',
+  '绿叶菜和全谷物搭配很好',
+  '蛋白质分布可以更均匀，早晚各加一份',
+  '烹调方式建议改成蒸、煮、炖，减少煎炸',
+  '服用他汀期间避免大量西柚汁',
+  '服用华法林时绿叶菜量保持稳定',
 ];
 const WEIGHT_TEMPLATES = [
-  '体重稳步下降，很棒！',
-  '体重有波动很正常，看长期趋势',
-  '减重速度偏快，注意营养均衡',
-  '建议固定早晨空腹称重，数据更可比',
+  '体重有波动很正常，重点看血压、水肿和长期趋势',
+  '近期体重上升请同时记录踝部水肿、气短和血压',
+  '不建议短期快速减重，先保证优质蛋白和总能量',
+  '建议固定早晨空腹、排空后称重，数据更可比',
 ];
 // 结营寄语模板
 const MESSAGE_TEMPLATES = [
-  '坚持下来很不容易，你的自律大家都看在眼里，继续加油！',
-  '体重数字只是开始，希望你把这段时间养成的习惯带到以后的生活里。',
-  '结营不是结束，是健康生活的起点，有任何问题随时找我。',
-  '这期进步很大，下期我们继续向目标冲刺！',
+  '这一阶段最值得肯定的是规律监测和低盐习惯，请继续坚持。',
+  '血压和血脂的变化需要长期管理，结营不是停药或停止随访的理由。',
+  '把少盐、少油、规律运动和按时服药带到以后的生活里。',
+  '如出现胸痛、晕厥、明显气短或血压持续 ≥180/110，请立即到院。',
 ];
 
 // 结营寄语（可多条：多名营养师/教练各自撰写提交 append 不覆盖；学员端结营报告逐条展示带角色姓名；
@@ -261,11 +261,47 @@ const handleSaveWeightComment = (recordId: string) => {
 // Medical tab - built from dynamic metric configs + per-student mock values, gender-aware
 const getStudentMetrics = (studentId?: string) => {
   if (!studentId) return MOCK_METRIC_VALUES;
-  return metricValuesFor(studentId, store.selectedCampId) || MOCK_METRIC_VALUES;
+  return store.getEffectiveMetricValues(studentId, store.selectedCampId) || MOCK_METRIC_VALUES;
+};
+const getStudentMetricStages = (studentId?: string) => {
+  if (!studentId) return null;
+  const campId = selectedCampId.value || store.getStudentCampId(studentId);
+  return campId ? store.getMetricStageValues(studentId, campId) : null;
 };
 
-const medicalData = ref<MedicalCategory[]>(JSON.parse(JSON.stringify(buildMedicalData(store.metricConfigs, getStudentMetrics(student.value?.id), student.value?.gender))));
+const medicalData = ref<MedicalCategory[]>([]);
 const isEditingMedical = ref(false);
+
+function rebuildMedicalData() {
+  const stages = getStudentMetricStages(student.value?.id);
+  const values = getStudentMetrics(student.value?.id);
+  medicalData.value = JSON.parse(JSON.stringify(buildMedicalData(
+    store.metricConfigs,
+    values,
+    student.value?.gender,
+    stages?.midterm || {},
+  )));
+}
+
+function toggleMedicalEdit() {
+  if (isEditingMedical.value && student.value && selectedCampId.value) {
+    const stageValues = { baseline: {}, midterm: {}, closeout: {} } as Record<'baseline' | 'midterm' | 'closeout', Record<string, number | string | null>>;
+    medicalData.value.forEach((cat) => {
+      cat.items.forEach((item) => {
+        const config = store.metricConfigs.find((c) => c.name === item.name);
+        if (!config) return;
+        stageValues.baseline[config.id] = item.beforeValue;
+        stageValues.midterm[config.id] = item.midtermValue ?? null;
+        stageValues.closeout[config.id] = item.afterValue;
+      });
+    });
+    const ok1 = store.saveMetricStageSnapshot(student.value.id, selectedCampId.value, 'baseline', stageValues.baseline);
+    const ok2 = store.saveMetricStageSnapshot(student.value.id, selectedCampId.value, 'midterm', stageValues.midterm);
+    const ok3 = store.saveMetricStageSnapshot(student.value.id, selectedCampId.value, 'closeout', stageValues.closeout);
+    if (ok1 && ok2 && ok3) showToast({ message: '三阶段指标已保存到学员档案', position: 'top' });
+  }
+  isEditingMedical.value = !isEditingMedical.value;
+}
 
 // Collapsible category state - default all expanded
 const collapsedCats = ref<Set<string>>(new Set());
@@ -278,10 +314,10 @@ const toggleCat = (title: string) => {
 
 // 切换学员时重建医疗数据（不同学员有各自的指标值和性别参考范围）
 watch(() => student.value?.id, () => {
-  const vals = getStudentMetrics(student.value?.id);
-  medicalData.value = JSON.parse(JSON.stringify(buildMedicalData(store.metricConfigs, vals, student.value?.gender)));
+  rebuildMedicalData();
   loadCampMessage();
 }, { immediate: true });
+watch(selectedCampId, rebuildMedicalData);
 
 // 切换营期时重新加载寄语
 watch(selectedCampId, () => {
@@ -406,12 +442,14 @@ const handleSaveComment = (recordId: string) => {
   cancelComment();
 };
 
-const handleMedicalChange = (catIdx: number, itemIdx: number, field: 'beforeValue' | 'afterValue', value: string) => {
+const handleMedicalChange = (catIdx: number, itemIdx: number, field: 'beforeValue' | 'midtermValue' | 'afterValue', value: string) => {
   const item: Indicator = medicalData.value[catIdx].items[itemIdx];
   (item as any)[field] = value ? Number(value) : null;
   const gender = student.value?.gender;
   if (field === 'beforeValue') {
     item.isBeforeOut = isValueOutOfRange(item.beforeValue, item.normalRange, gender);
+  } else if (field === 'midtermValue') {
+    item.isMidtermOut = isValueOutOfRange(item.midtermValue ?? null, item.normalRange, gender);
   } else {
     item.isAfterOut = isValueOutOfRange(item.afterValue, item.normalRange, gender);
   }
@@ -502,6 +540,12 @@ function handleDeleteManualScore(id: string) {
     store.deleteManualScoreRecord(id);
   }).catch(() => {});
 }
+
+function openNutritionPrescription() {
+  if (!store.selectedStudentId) return;
+  store.detailSelectedCampId = selectedCampId.value || null;
+  store.setCurrentView('nutrition-prescription');
+}
 </script>
 
 <template>
@@ -528,14 +572,14 @@ function handleDeleteManualScore(id: string) {
             </div>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          class="text-[#FF976A] border-[#FF976A] shrink-0 text-xs"
-          @click="store.setCurrentView('pointsDetail')"
-        >
-          积分与排名
-        </Button>
+        <div class="flex shrink-0 flex-col gap-1.5">
+          <Button variant="outline" size="sm" class="text-[#0B5FD7] border-[#0B5FD7]/50 text-xs" @click="openNutritionPrescription">
+            营养处方
+          </Button>
+          <Button variant="outline" size="sm" class="text-[#FF976A] border-[#FF976A] text-xs" @click="store.setCurrentView('pointsDetail')">
+            积分与排名
+          </Button>
+        </div>
       </Card>
 
       <!-- 营期：学员档案页不支持切换，只展示当前营期（切换由首页全局营期选择器控制） -->
@@ -871,6 +915,16 @@ function handleDeleteManualScore(id: string) {
                   </div>
                 </div>
               </div>
+              <div v-if="record.avgHr || record.fatigue || record.symptoms?.length" class="mb-3 flex flex-wrap gap-1.5">
+                <span v-if="record.avgHr" class="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-[#0B5FD7]">心率 {{ record.avgHr }} 次/分</span>
+                <span v-if="record.fatigue" class="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-600">疲劳 {{ record.fatigue }}/5</span>
+                <span
+                  v-for="s in record.symptoms || []"
+                  :key="s"
+                  class="rounded-full px-2 py-0.5 text-[9px] font-bold"
+                  :class="s === 'none' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'"
+                >{{ s === 'none' ? '无不适' : s === 'chest_pain' ? '胸痛/胸闷' : s === 'dyspnea' ? '异常气短' : s === 'dizziness' ? '头晕' : s === 'palpitation' ? '心悸' : '其他不适' }}</span>
+              </div>
 
               <div v-if="record.notes" class="mb-3">
                 <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ record.notes }}</p>
@@ -1092,12 +1146,12 @@ function handleDeleteManualScore(id: string) {
           <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
             <div>
               <h3 class="font-bold text-gray-900 text-sm">医疗数据维护</h3>
-              <p class="text-xs text-gray-500">协助填写和更新学员体检指标</p>
+              <p class="text-xs text-gray-500">录入开营、第 6 个月与结营三次心血管检查指标</p>
             </div>
             <Button
               size="sm"
               :variant="isEditingMedical ? 'primary' : 'outline'"
-              @click="isEditingMedical = !isEditingMedical"
+              @click="toggleMedicalEdit"
             >
               {{ isEditingMedical ? '完成编辑' : '编辑指标' }}
             </Button>
@@ -1119,15 +1173,15 @@ function handleDeleteManualScore(id: string) {
                   </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-3 gap-2">
                   <div class="bg-gray-50 p-2 rounded flex flex-col justify-center items-center">
-                    <span class="text-[10px] text-gray-500 mb-1">开营前</span>
+                    <span class="text-[9px] text-gray-500 mb-1">开营</span>
                     <div class="text-sm w-full flex justify-center">
                       <input
                         v-if="isEditingMedical"
                         type="number"
                         inputmode="decimal"
-                        class="w-20 text-center rounded border border-gray-200 p-1 text-sm focus:border-[#0B5FD7] outline-none"
+                        class="w-14 text-center rounded border border-gray-200 p-1 text-xs focus:border-[#0B5FD7] outline-none"
                         :value="item.beforeValue === null ? '' : item.beforeValue"
                         @input="handleMedicalChange(idx, iIdx, 'beforeValue', ($event.target as HTMLInputElement).value)"
                         placeholder="未检测"
@@ -1139,14 +1193,33 @@ function handleDeleteManualScore(id: string) {
                       <span v-if="!isEditingMedical && item.beforeValue !== null && item.unit" class="text-[10px] text-gray-500 ml-1">{{ item.unit }}</span>
                     </div>
                   </div>
-                  <div class="bg-[#0B5FD7]/5 p-2 rounded flex flex-col justify-center items-center border border-[#0B5FD7]/10">
-                    <span class="text-[10px] text-[#0B5FD7] font-medium mb-1">结营后</span>
+                  <div class="bg-amber-50 p-2 rounded flex flex-col justify-center items-center border border-amber-100">
+                    <span class="text-[9px] text-amber-600 font-medium mb-1">第6个月</span>
                     <div class="text-sm w-full flex justify-center">
                       <input
                         v-if="isEditingMedical"
                         type="number"
                         inputmode="decimal"
-                        class="w-20 text-center rounded border border-gray-200 p-1 text-sm focus:border-[#0B5FD7] outline-none"
+                        class="w-14 text-center rounded border border-amber-200 p-1 text-xs focus:border-amber-500 outline-none"
+                        :value="item.midtermValue == null ? '' : item.midtermValue"
+                        @input="handleMedicalChange(idx, iIdx, 'midtermValue', ($event.target as HTMLInputElement).value)"
+                        placeholder="未复查"
+                      />
+                      <span v-else :class="item.isMidtermOut ? 'text-orange-500 font-bold' : 'text-gray-900 font-medium'">
+                        <span v-if="item.midtermValue == null" class="text-gray-400 font-normal">-- 待复查</span>
+                        <template v-else>{{ item.midtermValue }}</template>
+                      </span>
+                      <span v-if="!isEditingMedical && item.midtermValue != null && item.unit" class="text-[10px] text-gray-500 ml-1">{{ item.unit }}</span>
+                    </div>
+                  </div>
+                  <div class="bg-[#0B5FD7]/5 p-2 rounded flex flex-col justify-center items-center border border-[#0B5FD7]/10">
+                    <span class="text-[9px] text-[#0B5FD7] font-medium mb-1">结营</span>
+                    <div class="text-sm w-full flex justify-center">
+                      <input
+                        v-if="isEditingMedical"
+                        type="number"
+                        inputmode="decimal"
+                        class="w-14 text-center rounded border border-gray-200 p-1 text-xs focus:border-[#0B5FD7] outline-none"
                         :value="item.afterValue === null ? '' : item.afterValue"
                         @input="handleMedicalChange(idx, iIdx, 'afterValue', ($event.target as HTMLInputElement).value)"
                         placeholder="未检测"

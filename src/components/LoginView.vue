@@ -52,9 +52,9 @@ const handlePhoneSubmit = () => {
     } else {
       const inactiveAccount = store.accounts.find((a) => a.phone === phone.value);
       if (inactiveAccount) {
-        error.value = '该账户已被禁用，请联系营养师启用';
+        error.value = '该账户已被禁用，请联系医院管理员启用';
       } else {
-        error.value = '该手机号未在系统中配置，请联系营养师添加账户';
+        error.value = '该手机号未在系统中配置，请联系医院项目专员或管理员添加账户';
       }
     }
     return;

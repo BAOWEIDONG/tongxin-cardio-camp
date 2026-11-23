@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue';
 import { showToast } from 'vant';
 import { useAppStore } from '../store/app';
-import { metricValuesFor } from '../mock/data';
 import { latestOrFirstId } from '../lib/camps';
 import { NavBar, Card } from './ui';
 import { Download } from 'lucide-vue-next';
@@ -29,7 +28,7 @@ const exportData = () => showToast('数据已导出');
 /** 只保留营前、营后都有数值的学员；进行中营期（无复测）自然为空 */
 const studentChanges = computed(() =>
   students.value.map((stu) => {
-    const vals = metricValuesFor(stu.id, campId.value);
+    const vals = store.getEffectiveMetricValues(stu.id, campId.value);
     const changes: Record<string, number> = {};
     let has = false;
     INDICATORS.forEach((ind) => {

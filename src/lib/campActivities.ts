@@ -35,8 +35,75 @@
  * ============================================================================
  */
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
-import type { DietRecord, ExerciseRecord, WeightRecord } from '../types';
+import type { BpRecord, DietRecord, ExerciseRecord, WeightRecord } from '../types';
 import { isDayComplete } from './streak';
+
+// ─── 心血管阶段达标（血压记录 / 安全运动 / 低盐饮食）────────────────
+
+export interface CardioMilestoneTrack {
+  key: 'bp' | 'exercise' | 'lowSalt';
+  label: string;
+  current: number;
+  target: number;
+  unit: string;
+  progress: number;
+  achieved: boolean;
+}
+
+export interface CardioMilestone {
+  id: string;
+  label: string;
+  phase: 1 | 2;
+  achieved: boolean;
+  progress: number;
+  reward: string;
+  tracks: CardioMilestoneTrack[];
+}
+
+function distinctDayCount(records: Array<{ date: string }>): number {
+  return new Set(records.map((r) => r.date.substring(0, 10))).size;
+}
+
+/**
+ * 阶段达标奖：不再以减重百分比判定，改为三条心血管管理行为。
+ *  - 阶段一：家庭血压 7 天 + 安全运动 10 天 + 低盐饮食 10 天
+ *  - 阶段二：家庭血压 14 天 + 安全运动 21 天 + 低盐饮食 21 天
+ * 运动仅统计强度 ≤3 且无不适信号的记录；低盐以饮食打卡的 lowSalt 标记为准。
+ */
+export function computeCardioMilestones(
+  dietRecords: DietRecord[],
+  exerciseRecords: ExerciseRecord[],
+  bpRecords: BpRecord[],
+): CardioMilestone[] {
+  const bpDays = distinctDayCount(bpRecords);
+  const safeExerciseDays = distinctDayCount(
+    exerciseRecords.filter((r) => r.intensity <= 3 && (r.symptoms || ['none']).every((s) => s === 'none')),
+  );
+  const lowSaltDays = distinctDayCount(dietRecords.filter((r) => r.lowSalt));
+
+  const make = (phase: 1 | 2): CardioMilestone => {
+    const targets = phase === 1
+      ? { bp: 7, exercise: 10, lowSalt: 10 }
+      : { bp: 14, exercise: 21, lowSalt: 21 };
+    const tracks: CardioMilestoneTrack[] = [
+      { key: 'bp', label: '家庭血压记录', current: Math.min(bpDays, targets.bp), target: targets.bp, unit: '天', progress: Math.min(bpDays / targets.bp, 1), achieved: bpDays >= targets.bp },
+      { key: 'exercise', label: '安全运动', current: Math.min(safeExerciseDays, targets.exercise), target: targets.exercise, unit: '天', progress: Math.min(safeExerciseDays / targets.exercise, 1), achieved: safeExerciseDays >= targets.exercise },
+      { key: 'lowSalt', label: '低盐饮食', current: Math.min(lowSaltDays, targets.lowSalt), target: targets.lowSalt, unit: '天', progress: Math.min(lowSaltDays / targets.lowSalt, 1), achieved: lowSaltDays >= targets.lowSalt },
+    ];
+    const progress = tracks.reduce((sum, t) => sum + t.progress, 0) / tracks.length;
+    return {
+      id: `cardio_phase_${phase}`,
+      label: `阶段${phase === 1 ? '一' : '二'}达标`,
+      phase,
+      achieved: tracks.every((t) => t.achieved),
+      progress,
+      reward: phase === 1 ? '一档礼品' : '二档礼品',
+      tracks,
+    };
+  };
+
+  return [make(1), make(2)];
+}
 
 // ─── 阶梯减重达标奖 ─────────────────────────────────────────
 
@@ -209,14 +276,14 @@ interface ChallengeDef {
 
 /** 8 周挑战主题模板；超过 8 周循环重复 */
 const CHALLENGE_DEFS: ChallengeDef[] = [
-  { title: '启动周', icon: '🚀', description: '完成 5 天全部打卡（三餐+运动+体重）', target: 5, unit: '天', mode: 'completeDays' },
-  { title: '晨型人周', icon: '🌅', description: '3 次在早上 9 点前完成运动打卡', target: 3, unit: '次', mode: 'earlyMorning' },
-  { title: '多面手周', icon: '🎽', description: '尝试 3 种不同类型的运动', target: 3, unit: '种', mode: 'exerciseTypes' },
+  { title: '建立习惯周', icon: '🌱', description: '完成 5 天全部打卡（三餐+运动+体重）', target: 5, unit: '天', mode: 'completeDays' },
+  { title: '晨间运动周', icon: '🌅', description: '3 次在早上 9 点前完成安全运动打卡', target: 3, unit: '次', mode: 'earlyMorning' },
+  { title: '运动多样性周', icon: '🎽', description: '尝试 3 种低至中等强度的运动', target: 3, unit: '种', mode: 'exerciseTypes' },
   { title: '绿色饮食周', icon: '🥗', description: '完成 6 天全部打卡，每餐都有蔬菜', target: 6, unit: '天', mode: 'completeDays' },
   { title: '力量周', icon: '💪', description: '4 次在早上 9 点前完成运动打卡', target: 4, unit: '次', mode: 'earlyMorning' },
   { title: '柔韧周', icon: '🧘', description: '尝试 3 种不同类型的运动', target: 3, unit: '种', mode: 'exerciseTypes' },
   { title: '全能周', icon: '⚡', description: '完成 7 天全部打卡，全方位自律', target: 7, unit: '天', mode: 'completeDays' },
-  { title: '冲刺周', icon: '🏁', description: '完成 6 天全部打卡，为结营冲刺', target: 6, unit: '天', mode: 'completeDays' },
+  { title: '安全巩固周', icon: '🛡️', description: '完成 6 天全部打卡，巩固处方执行', target: 6, unit: '天', mode: 'completeDays' },
 ];
 
 export function computeWeeklyChallenges(

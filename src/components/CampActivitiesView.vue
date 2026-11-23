@@ -4,8 +4,9 @@ import { useAppStore } from '../store/app';
 import { campDateRange } from '../lib/camps';
 import { NavBar, Card, StudentTabbar } from './ui';
 import { Popup as VanPopup, showToast } from 'vant';
-import { Zap, Scale, Calendar, CheckCircle2, PartyPopper, Gift, Truck, HandCoins, Package, ChevronDown, MapPin } from 'lucide-vue-next';
-import { computeWeightMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
+import { Zap, HeartPulse, Dumbbell, Salad, Calendar, CheckCircle2, PartyPopper, Gift, Truck, HandCoins, Package, ChevronDown, MapPin } from 'lucide-vue-next';
+import { computeCardioMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
+import type { CardioMilestone } from '../lib/campActivities';
 import type { RewardClaim } from '../types';
 
 const store = useAppStore();
@@ -50,23 +51,24 @@ const unreadCount = computed(() =>
 
 const isMine = (r: { studentId?: string }) => r.studentId === store.user?.id;
 
-// 学员体重记录（按当前营期过滤）
+// 学员体重记录仅用于每周挑战/全勤计算；阶段达标改为心血管行为口径
 const myWeights = computed(() => campWeightRecords.value.filter(isMine).sort((a, b) => a.date.localeCompare(b.date)));
-const startWeight = computed(() => myWeights.value.length > 0 ? myWeights.value[0].weight : null);
-
-// 阶梯减重
-const milestones = computed(() => computeWeightMilestones(myWeights.value, startWeight.value));
-const latestWeight = computed(() => myWeights.value.length > 0 ? myWeights.value[myWeights.value.length - 1].weight : null);
+const myBpRecords = computed(() =>
+  store.user?.id && activeCampId.value ? store.getStudentBpRecords(store.user.id, activeCampId.value) : [],
+);
+const milestones = computed(() =>
+  computeCardioMilestones(campDietRecords.value, campExerciseRecords.value, myBpRecords.value),
+);
 
 /**
  * 查找某里程碑对应的奖品层级（通过描述中的百分比匹配）
  * milestone.threshold=0.03 -> 匹配 description 含 "3%" 的 tier
  */
-function findMilestoneTier(threshold: number) {
-  const percent = Math.round(threshold * 100);
+function findMilestoneTier(phase: number) {
+  const phaseText = phase === 1 ? '阶段一' : '阶段二';
   return campRewardTiers.value.find(t =>
     t.source === 'activity' && t.activityType === 'milestone' &&
-    t.description.includes(`${percent}%`)
+    (t.description || '').includes(phaseText)
   );
 }
 
@@ -81,9 +83,9 @@ function milestoneClaimStatus(threshold: number): string | null {
 }
 
 /** 里程碑状态文案 */
-function milestoneStatusText(m: { achieved: boolean; threshold: number; progress: number }): string {
+function milestoneStatusText(m: CardioMilestone): string {
   if (!m.achieved) return `${Math.round(m.progress * 100)}%`;
-  const status = milestoneClaimStatus(m.threshold);
+  const status = milestoneClaimStatus(m.phase);
   switch (status) {
     case 'confirmed': return '待领取';
     case 'pending': return '待发货';
@@ -94,9 +96,9 @@ function milestoneStatusText(m: { achieved: boolean; threshold: number; progress
 }
 
 /** 里程碑状态样式 */
-function milestoneStatusCls(m: { achieved: boolean; threshold: number }): string {
+function milestoneStatusCls(m: CardioMilestone): string {
   if (!m.achieved) return 'bg-gray-100 text-gray-400';
-  const status = milestoneClaimStatus(m.threshold);
+  const status = milestoneClaimStatus(m.phase);
   switch (status) {
     case 'confirmed': return 'bg-[#FF976A] text-white';
     case 'pending': return 'bg-blue-500 text-white';
@@ -221,7 +223,7 @@ const challengeStatusConfig = (status: string) => {
 
 const activityTypeLabel = (type?: string) => {
   switch (type) {
-    case 'milestone': return '阶梯达标';
+    case 'milestone': return '阶段达标';
     case 'weekly': return '每周挑战完成';
     case 'lucky': return '全勤幸运抽奖';
     default: return '活动奖励';
@@ -364,7 +366,7 @@ const activityTypeLabel = (type?: string) => {
           @click="activityTab = 'milestone'"
           :class="['seg-tab seg-tab-green', activityTab === 'milestone' ? 'active' : '']"
         >
-          <Scale class="w-3.5 h-3.5" /> 阶梯达标
+          <HeartPulse class="w-3.5 h-3.5" /> 阶段达标
         </button>
         <button
           v-if="activityConfig.weeklyChallenge"
@@ -382,24 +384,34 @@ const activityTypeLabel = (type?: string) => {
         </button>
       </div>
 
-      <!-- 阶梯达标奖 -->
+      <!-- 阶段达标奖：血压记录 + 安全运动 + 低盐饮食 -->
       <Card v-if="activityConfig.weightMilestone && activityTab === 'milestone'">
         <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
-          <Scale class="h-4 w-4 text-[#0B5FD7]" />
-          阶梯达标奖
+          <HeartPulse class="h-4 w-4 text-[#0B5FD7]" />
+          心血管阶段达标
         </h3>
-        <p class="text-[10px] text-gray-400 mb-3">按开营体重百分比计算，达标后上传体重秤照片，营养师确认即可领奖</p>
+        <p class="text-[10px] text-gray-400 mb-3">按血压记录、安全运动和低盐饮食三项行为计算，达标后由团队复核发奖；不以减重速度判定。</p>
 
-        <!-- 当前进度：核心成果"已减Xkg"大数字突出展示 -->
-        <div v-if="startWeight && latestWeight" class="relative overflow-hidden rounded-2xl p-5 mb-4 text-center border border-[#0B5FD7]/20 bg-gradient-to-b from-[#0B5FD7]/[0.07] to-white">
-          <div class="absolute -top-10 -right-10 w-32 h-32 bg-[#0B5FD7]/10 rounded-full blur-2xl pointer-events-none"></div>
-          <div class="text-[11px] text-gray-400 font-medium mb-1">开营 {{ startWeight }}kg → 当前 {{ latestWeight }}kg</div>
-          <div :class="['text-4xl font-black tracking-tight leading-none', (startWeight - latestWeight) > 0 ? 'text-[#0B5FD7]' : 'text-gray-900']">
-            {{ (startWeight - latestWeight) > 0 ? '-' : '+' }}{{ Math.abs(startWeight - latestWeight).toFixed(1) }}<span class="text-base font-bold ml-0.5">kg</span>
+        <div class="mb-4 rounded-2xl border border-[#0B5FD7]/20 bg-gradient-to-b from-[#0B5FD7]/[0.07] to-white p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-[11px] font-bold text-gray-700">阶段一：7 天血压 + 10 天运动 + 10 天低盐</span>
+            <span class="text-[10px] font-bold text-[#0B5FD7]">{{ Math.round(milestones[0].progress * 100) }}%</span>
           </div>
-          <div class="text-[11px] font-bold mt-1.5" :class="(startWeight - latestWeight) > 0 ? 'text-[#0B5FD7]' : 'text-gray-500'">
-            {{ (startWeight - latestWeight) > 0 ? '已下降' : '增了' }} {{ (Math.abs(startWeight - latestWeight) / startWeight * 100).toFixed(1) }}%
-            <span v-if="(startWeight - latestWeight) > 0" class="ml-1">🎉</span>
+          <div class="space-y-2.5">
+            <div v-for="t in milestones[0].tracks" :key="t.key">
+              <div class="mb-1 flex items-center justify-between text-[10px]">
+                <span class="flex items-center gap-1 font-semibold text-gray-600">
+                  <HeartPulse v-if="t.key === 'bp'" class="h-3 w-3 text-[#0B5FD7]" />
+                  <Dumbbell v-else-if="t.key === 'exercise'" class="h-3 w-3 text-[#1677FF]" />
+                  <Salad v-else class="h-3 w-3 text-emerald-600" />
+                  {{ t.label }}
+                </span>
+                <span :class="t.achieved ? 'font-bold text-[#0B5FD7]' : 'text-gray-400'">{{ t.current }}/{{ t.target }} {{ t.unit }}</span>
+              </div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                <div class="h-full rounded-full transition-all" :class="t.achieved ? 'bg-[#0B5FD7]' : 'bg-[#FF976A]'" :style="{ width: `${t.progress * 100}%` }"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -425,7 +437,7 @@ const activityTypeLabel = (type?: string) => {
                 :style="{ width: `${m.progress * 100}%` }"
               ></div>
             </div>
-            <div class="text-[10px] text-gray-400 mt-1.5">{{ m.reward }} · 需营养师确认体重秤照片</div>
+            <div class="text-[10px] text-gray-400 mt-1.5">{{ m.reward }} · 需团队复核血压、运动与低盐记录</div>
           </div>
         </div>
       </Card>

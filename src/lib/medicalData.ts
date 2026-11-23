@@ -5,8 +5,10 @@ export type Indicator = {
   unit: string;
   normalRange: string;
   beforeValue: number | string | null;
+  midtermValue?: number | string | null;
   afterValue: number | string | null;
   isBeforeOut: boolean;
+  isMidtermOut?: boolean;
   isAfterOut: boolean;
 };
 
@@ -100,18 +102,22 @@ export function buildMedicalData(
   configs: MetricConfig[],
   values: Record<string, MetricValue>,
   gender?: 'male' | 'female',
+  midtermValues: Record<string, number | string | null> = {},
 ): MedicalCategory[] {
   const categoryMap = new Map<string, Indicator[]>();
   for (const config of configs) {
     const v = values[config.id] || { beforeValue: null, afterValue: null };
+    const midtermValue = midtermValues[config.id] ?? null;
     const range = config.normalRange || '';
     const indicator: Indicator = {
       name: config.name,
       unit: config.unit,
       normalRange: range,
       beforeValue: v.beforeValue,
+      midtermValue,
       afterValue: v.afterValue,
       isBeforeOut: isValueOutOfRange(v.beforeValue, range, gender),
+      isMidtermOut: isValueOutOfRange(midtermValue, range, gender),
       isAfterOut: isValueOutOfRange(v.afterValue, range, gender),
     };
     if (!categoryMap.has(config.category)) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { format } from 'date-fns';
 import { showConfirmDialog, showToast, Popup as VanPopup, TimePicker as VanTimePicker } from 'vant';
 import { useAppStore, questionnaireStorageKey } from '../store/app';
 import { uploadFile } from '../lib/api';
@@ -7,8 +8,8 @@ import { compressImage } from '../lib/imageCompress';
 import { Button, NavBar, Card } from './ui';
 import {
   UploadCloud, FileText, X, Minus, Plus,
-  Moon, Dumbbell, HeartPulse, Sparkles,
-  Footprints, Bike, Waves, PersonStanding, CircleDot, Volleyball, MoreHorizontal,
+  Moon, Dumbbell, HeartPulse, Sparkles, ShieldCheck,
+  Footprints, Bike, Waves, PersonStanding, Volleyball, MoreHorizontal, Bandage,
   ChevronRight,
 } from 'lucide-vue-next';
 
@@ -20,9 +21,18 @@ const EXERCISE_OPTIONS = [
   { label: '力量训练', icon: Dumbbell },
   { label: '瑜伽', icon: Sparkles },
   { label: '球类', icon: Volleyball },
-  { label: '跳绳', icon: CircleDot },
+  { label: '弹力带训练', icon: Bandage },
   { label: '其他', icon: MoreHorizontal },
 ];
+
+const REPORT_CATEGORIES = [
+  { value: 'diagnosis', label: '确诊病历' },
+  { value: 'labs', label: '化验报告' },
+  { value: 'ecg', label: '心电图/心电监测' },
+  { value: 'other', label: '其他检查' },
+] as const;
+const reportCategoryLabel = (value?: string) =>
+  REPORT_CATEGORIES.find((c) => c.value === value)?.label || '其他检查';
 
 const store = useAppStore();
 // 问卷本地存储键按当前学员隔离（防止新账户串用他人问卷/草稿）
@@ -31,6 +41,8 @@ const qKey = (kind: 'submitted' | 'draft') => questionnaireStorageKey(kind, stor
 // 1: 认识一下, 2: 身体小秘密, 3: 日常节奏, 4: 运动习惯, 5: 给营养师的小助手
 const step = ref(1);
 const error = ref('');
+const consentAccepted = ref(false);
+const reportCategory = ref<'diagnosis' | 'labs' | 'ecg' | 'other'>('diagnosis');
 
 const formData = reactive({
   name: store.user?.name || '',
@@ -62,7 +74,7 @@ const formData = reactive({
   exerciseFrequency: '3',
   exerciseTypes: [] as string[],
   exerciseDuration: '45',
-  medicalReports: [] as { url: string; type: 'image' | 'pdf'; name?: string }[],
+  medicalReports: [] as { url: string; type: 'image' | 'pdf'; name?: string; category?: 'diagnosis' | 'labs' | 'ecg' | 'other'; uploadedAt?: string }[],
 });
 
 onMounted(() => {
@@ -169,6 +181,10 @@ const handleNext = () => {
     const ed = parseInt(formData.exerciseDuration);
     if (ed < 0 || ed > 600) { error.value = '每次运动时长需在0-600分钟之间'; return; }
   } else if (step.value === 5) {
+    if (!consentAccepted.value) {
+      error.value = '请先阅读并签署健康数据授权与隐私保护协议';
+      return;
+    }
     showConfirmDialog({ title: '提示', message: '提交后不可修改，确认提交？' })
       .then(() => handleSubmit())
       .catch(() => {});
@@ -199,6 +215,9 @@ const handleSubmit = () => {
 
   localStorage.setItem(qKey('submitted'), JSON.stringify(formData));
   localStorage.removeItem(qKey('draft'));
+  if (store.user?.id) {
+    store.recordStudentConsent(store.user.id, formData.name || store.user.name, store.user.phone || '');
+  }
   store.setQuestionnaireAnswered(true);
   store.resetToView('dashboard');
 };
@@ -234,6 +253,8 @@ const handleReportSelect = async (e: Event) => {
       url: await uploadFile(await compressImage(f)),
       type: (f.type === 'application/pdf' ? 'pdf' : 'image') as 'image' | 'pdf',
       name: f.name,
+      category: reportCategory.value,
+      uploadedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
     })),
   );
   formData.medicalReports = [...formData.medicalReports, ...newReports];
@@ -704,6 +725,21 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
           </div>
         </Card>
 
+        <Card class="space-y-3 border border-red-100 bg-red-50/40">
+          <div class="flex items-center gap-2">
+            <ShieldCheck class="h-4 w-4 text-[#0B5FD7]" />
+            <h3 class="text-sm font-bold text-gray-900">健康数据授权与隐私保护</h3>
+          </div>
+          <p class="text-[10px] leading-relaxed text-gray-600">
+            您的身份、病历、用药、血压、心电、化验与打卡数据仅用于本项目风险筛查、运动/营养处方、随访和结营报告。团队按医院归属授权访问，不能跨机构查看。互联网医院正式问诊需跳转第三方平台，按平台规则挂号与收费。
+          </p>
+          <p class="text-[9px] text-gray-400">协议版本 v1.0-2026-11 · 签署后将留存时间、账号与版本，可在健康档案查询。</p>
+          <label class="flex items-start gap-2 rounded-xl bg-white p-3 text-[11px] leading-relaxed text-gray-700">
+            <input v-model="consentAccepted" type="checkbox" class="mt-0.5 accent-[#0B5FD7]" />
+            <span>我已阅读并同意上述协议，授权医护团队在心脑血管健康营服务范围内使用我的健康数据。</span>
+          </label>
+        </Card>
+
         <Card class="space-y-4">
           <div>
             <h3 class="font-bold text-gray-900">确诊与检查资料</h3>
@@ -727,7 +763,7 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
                 <X class="w-3 h-3" />
               </button>
               <div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] p-1 truncate">
-                {{ r.type === 'pdf' ? (r.name || `体检报告_${idx + 1}`) : `体检报告_${idx + 1}` }}
+                {{ reportCategoryLabel(r.category) }} · {{ r.type === 'pdf' ? (r.name || `报告_${idx + 1}`) : `报告_${idx + 1}` }}
               </div>
             </div>
 
@@ -739,6 +775,18 @@ function onTimePickerConfirm({ selectedValues }: { selectedValues: string[] }) {
               <UploadCloud class="w-6 h-6 mb-1" />
               <span class="text-[10px]">添加文件</span>
             </button>
+          </div>
+          <div>
+            <div class="mb-2 text-[10px] font-bold text-gray-500">资料归类</div>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="c in REPORT_CATEGORIES"
+                :key="c.value"
+                class="rounded-full border px-3 py-1.5 text-[10px] font-bold"
+                :class="reportCategory === c.value ? 'border-[#0B5FD7] bg-[#0B5FD7] text-white' : 'border-gray-200 bg-white text-gray-500'"
+                @click="reportCategory = c.value"
+              >{{ c.label }}</button>
+            </div>
           </div>
           <input ref="reportInputRef" type="file" accept="image/*,application/pdf" multiple class="hidden" @change="handleReportSelect" />
           <p class="text-[10px] text-gray-400">支持 JPG/PNG/PDF，最多 5 份，单份不超过 10MB</p>

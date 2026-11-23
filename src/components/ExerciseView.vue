@@ -24,7 +24,7 @@ const EXERCISE_TYPES = ['快走', '心脏康复操', '太极', '室内单车', '
 const INTENSITY_CONFIG = [
   { level: 1, label: '很轻松',   color: '#3B82F6', lightBg: '#EFF6FF', description: '散步般轻松，能正常对话和唱歌，几乎不喘',   example: '如：慢走、拉伸放松' },
   { level: 2, label: '轻松',     color: '#1677FF', lightBg: '#EFF6FF', description: '轻微出汗，可以正常聊天，呼吸略微加快',     example: '如：快走、轻松骑行' },
-  { level: 3, label: '适中',     color: '#F59E0B', lightBg: '#FFFBEB', description: '微喘但能说话，燃脂黄金区间，适合日常锻炼', example: '如：慢跑、游泳、健身操' },
+  { level: 3, label: '适中',     color: '#F59E0B', lightBg: '#FFFBEB', description: '微喘但能完整说句子，属于慢病有氧的适中活动；仅在医师签署处方允许时达到', example: '如：快走、轻松骑行、心脏康复操' },
   { level: 4, label: '偏强',     color: '#F97316', lightBg: '#FFF7ED', description: '呼吸明显加快，仅限医师处方明确允许时',     example: '如：较快速度爬坡、较大阻力训练' },
   { level: 5, label: '高强度',   color: '#EF4444', lightBg: '#FEF2F2', description: '心血管营学员不可自行选择，需医师单独评估', example: '如：冲刺、爆发性训练、竞技比赛' },
 ] as const;
@@ -83,6 +83,28 @@ const activities = ref<ActivityItem[]>([
 ]);
 const notes = ref('');
 const photos = ref<string[]>([]);
+const avgHr = ref('');
+const fatigueLevel = ref(2);
+const symptomTags = ref<('none' | 'chest_pain' | 'dyspnea' | 'dizziness' | 'palpitation' | 'other')[]>(['none']);
+const SYMPTOM_OPTIONS = [
+  { value: 'none', label: '无不适' },
+  { value: 'chest_pain', label: '胸痛/胸闷' },
+  { value: 'dyspnea', label: '异常气短' },
+  { value: 'dizziness', label: '头晕/眼前发黑' },
+  { value: 'palpitation', label: '明显心悸' },
+  { value: 'other', label: '其他不适' },
+] as const;
+
+function toggleSymptom(value: typeof SYMPTOM_OPTIONS[number]['value']) {
+  if (value === 'none') {
+    symptomTags.value = ['none'];
+    return;
+  }
+  const withoutNone = symptomTags.value.filter((v) => v !== 'none');
+  symptomTags.value = withoutNone.includes(value)
+    ? (withoutNone.filter((v) => v !== value).length ? withoutNone.filter((v) => v !== value) : ['none'])
+    : [...withoutNone, value];
+}
 
 // Media upload: 'photo' or 'video' - mutually exclusive
 const mediaType = ref<'photo' | 'video'>('photo');
@@ -176,6 +198,7 @@ const updateActivity = (id: string, field: keyof ActivityItem, value: any) => {
 };
 
 const getIntensityConfig = (level: number) => INTENSITY_CONFIG[level - 1] || INTENSITY_CONFIG[2];
+const symptomLabel = (v: string) => SYMPTOM_OPTIONS.find((s) => s.value === v)?.label || '其他不适';
 
 // Burst animation state - tracks which button was just clicked for ripple effect
 const burstKey = ref('');
@@ -376,6 +399,10 @@ const handleSubmit = () => {
       return;
     }
   }
+  if (avgHr.value && (Number(avgHr.value) < 35 || Number(avgHr.value) > 220)) {
+    showToast('运动心率填写的范围不合理，请核对后再提交');
+    return;
+  }
   // 必须上传图片或视频（二选一）
   if (mediaType.value === 'photo' && photos.value.length === 0) {
     showToast({ message: '请上传至少一张运动照片，或切换到视频打卡', position: 'top', duration: 2500 });
@@ -398,6 +425,9 @@ const handleSubmit = () => {
       type: a.type === '其他' ? a.customType : a.type,
       duration: parseInt(a.duration),
       intensity: a.intensity,
+      avgHr: avgHr.value ? Number(avgHr.value) : null,
+      fatigue: fatigueLevel.value,
+      symptoms: [...symptomTags.value],
       notes: index === 0 ? notes.value : undefined,
       photos: index === 0 && mediaType.value === 'photo' ? photos.value : undefined,
       videoUrls: index === 0 && mediaType.value === 'video' && videoUrls.value.length > 0 ? videoUrls.value : undefined,
@@ -419,8 +449,14 @@ const handleSubmit = () => {
     celebrateCheckin('exercise');
   }
   store.justCheckedIn = true;
+  if (symptomTags.value.some((v) => v !== 'none')) {
+    showToast({ message: '已记录运动不适，请停止运动并联系医护团队；胸痛、晕厥或严重气短请立即拨打 120', position: 'top', duration: 4000 });
+  }
   activities.value = activities.value.map(a => ({ ...a, duration: '', customType: '' }));
   notes.value = '';
+  avgHr.value = '';
+  fatigueLevel.value = 2;
+  symptomTags.value = ['none'];
   photos.value = [];
   videoUrls.value = [];
 };
@@ -555,7 +591,7 @@ const handleSubmit = () => {
         <div class="space-y-3">
           <div class="flex items-center justify-between">
             <label class="text-sm font-bold text-gray-900 block">主观强度</label>
-            <span class="text-xs text-gray-400">RPE 自感用力程度</span>
+            <span class="text-xs text-gray-400">RPE 自感用力程度（1–5 级）</span>
           </div>
 
           <!-- Intensity gradient slider -->
@@ -745,6 +781,47 @@ const handleSubmit = () => {
           <p v-if="videoUrls.length > 0" class="text-[10px] text-gray-400 mt-2">点击视频可预览，已上传 {{ videoUrls.length }}/{{ MAX_VIDEOS }} 个</p>
         </div>
 
+        <div class="space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-bold text-gray-900">本次运动安全记录</label>
+            <span class="text-[9px] text-gray-400">心血管营专项</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[10px] font-bold text-gray-600">平均心率（选填）</label>
+              <div class="relative mt-1">
+                <input v-model="avgHr" type="number" inputmode="numeric" placeholder="如 105" class="w-full rounded-lg border border-gray-200 bg-white p-2.5 pr-14 text-xs outline-none focus:border-[#0B5FD7]" />
+                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] text-gray-400">次/分</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-gray-600">疲劳程度</label>
+              <div class="mt-1 flex gap-1">
+                <button
+                  v-for="v in 5"
+                  :key="v"
+                  class="h-8 flex-1 rounded-lg text-[10px] font-bold"
+                  :class="fatigueLevel === v ? 'bg-[#0B5FD7] text-white' : 'bg-white text-gray-400 border border-gray-200'"
+                  @click="fatigueLevel = v"
+                >{{ v }}</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-gray-600">运动中有无不舒服</label>
+            <div class="mt-1 flex flex-wrap gap-1.5">
+              <button
+                v-for="s in SYMPTOM_OPTIONS"
+                :key="s.value"
+                class="rounded-full border px-2 py-1 text-[9px] font-bold"
+                :class="symptomTags.includes(s.value) ? (s.value === 'none' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-red-200 bg-red-50 text-red-600') : 'border-gray-200 bg-white text-gray-500'"
+                @click="toggleSymptom(s.value)"
+              >{{ s.label }}</button>
+            </div>
+            <p class="mt-1 text-[9px] leading-relaxed text-red-500">如出现胸痛、晕厥、明显心悸或异常气短，请立即停止运动并联系团队；紧急情况拨打 120。</p>
+          </div>
+        </div>
+
         <div class="space-y-2">
           <label class="text-sm font-bold text-gray-900 block">综合备注 (选填)</label>
           <textarea
@@ -859,6 +936,16 @@ const handleSubmit = () => {
                     <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: getIntensityConfig(record.intensity).color }"></span>
                     {{ getIntensityConfig(record.intensity).label }}
                   </span>
+                </div>
+                <div v-if="record.avgHr || record.fatigue || record.symptoms?.length" class="mb-3 flex flex-wrap gap-1.5">
+                  <span v-if="record.avgHr" class="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-[#0B5FD7]">平均心率 {{ record.avgHr }} 次/分</span>
+                  <span v-if="record.fatigue" class="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-600">疲劳 {{ record.fatigue }}/5</span>
+                  <span
+                    v-for="s in record.symptoms || []"
+                    :key="s"
+                    class="rounded-full px-2 py-0.5 text-[9px] font-bold"
+                    :class="s === 'none' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'"
+                  >{{ symptomLabel(s) }}</span>
                 </div>
 
                 <p v-if="record.notes" class="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{{ record.notes }}</p>

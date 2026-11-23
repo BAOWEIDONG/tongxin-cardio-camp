@@ -7,7 +7,6 @@ import { useDeferred } from '../composables/useDeferred';
 import { NavBar, Card, ChartRulePopup } from './ui';
 import { BarChart3, Users, Activity, ChevronRight, Download, HeartPulse, Building2, FileText, Settings, Flame } from 'lucide-vue-next';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from 'vant';
-import { metricValuesFor } from '../mock/data';
 import { generateDietitianSummary } from '../lib/campReport';
 import { exportReport } from '../lib/exportPDF';
 import type { DietitianCampSummary } from '../types';
@@ -31,7 +30,7 @@ const campWeightRecords = computed(() => store.selectedCampId ? store.getCampWei
 const campMetricValues = computed(() => {
   const cid = store.selectedCampId;
   const out: Record<string, Record<string, import('../lib/medicalData').MetricValue>> = {};
-  campStudents.value.forEach((s) => { out[s.id] = metricValuesFor(s.id, cid); });
+  campStudents.value.forEach((s) => { out[s.id] = store.getEffectiveMetricValues(s.id, cid); });
   return out;
 });
 

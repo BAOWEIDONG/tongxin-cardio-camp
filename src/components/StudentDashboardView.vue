@@ -7,13 +7,13 @@ import type { View } from '../store/app';
 import { nsKey } from '../lib/storage';
 import { campDateRange, campDaysOf } from '../lib/camps';
 import { Card, GenderAvatar, StudentTabbar } from './ui';
-import { Activity, Coffee, Calendar, Scale, PlayCircle, LogOut, Medal, Trophy, Gift, BookOpen, MessageCircle, ChevronDown, TrendingDown, TrendingUp, Minus, Target, X, Sparkles, HeartPulse, Stethoscope, ShieldCheck, AlertTriangle } from 'lucide-vue-next';
+import CampFlowCard from './CampFlowCard.vue';
+import { Activity, Coffee, Calendar, Scale, PlayCircle, LogOut, Medal, Trophy, Gift, BookOpen, MessageCircle, ChevronDown, TrendingDown, TrendingUp, Minus, X, Sparkles, HeartPulse, Stethoscope, ShieldCheck, AlertTriangle } from 'lucide-vue-next';
 import { Popup as VanPopup, showToast } from 'vant';
 import { rankStudents } from '../lib/scoring';
 import { getTodayQuote } from '../lib/motivationalQuotes';
 import { calculateStreak } from '../lib/streak';
-import { computeWeightMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
-import { metricValuesFor } from '../mock/data';
+import { computeCardioMilestones, computeWeeklyChallenges, computeLuckyDraw } from '../lib/campActivities';
 import type { RewardTier } from '../types';
 
 const store = useAppStore();
@@ -21,8 +21,7 @@ const store = useAppStore();
 const todayStr = format(new Date(), 'yyyy-MM-dd');
 const isMine = (r: { studentId?: string }) => r.studentId === store.user?.id;
 
-// ─── 核心数据带：体重变化 + 目标进度 ─────────────────────
-// 慢病健康管理场景下，学员最关注的是"我瘦了多少 / 离目标还有多远"
+// ─── 核心数据带：体重变化仅作体液潴留参考 ─────────────────────
 const myWeightRecords = computed(() =>
   campWt.value.filter(isMine).sort((a, b) => a.date.localeCompare(b.date))
 );
@@ -37,43 +36,17 @@ const weightChange = computed(() => {
   if (latestWeight.value === null || startWeight.value === null) return null;
   return parseFloat((latestWeight.value - startWeight.value).toFixed(1));
 });
-const targetWeight = computed(() => store.user?.targetWeight ?? null);
-// 距目标还差多少（正数=还需努力，≤0=已达标/超额）
-// 方向感知：减重时 latest-target，增重时 target-latest，使 ≤0 恒等于已达标
-const gapToTarget = computed(() => {
-  if (latestWeight.value === null || targetWeight.value === null) return null;
-  if (isWeightLoss.value) {
-    // 减重：还需减多少
-    return parseFloat((latestWeight.value - targetWeight.value).toFixed(1));
-  }
-  // 增重：还需增多少
-  return parseFloat((targetWeight.value - latestWeight.value).toFixed(1));
-});
-// 目标进度百分比：(起始-当前) / (起始-目标)，支持减重和增重两种场景
-const targetProgress = computed(() => {
-  if (startWeight.value === null || latestWeight.value === null || targetWeight.value === null) return null;
-  const total = startWeight.value - targetWeight.value;
-  if (total === 0) return null; // 起始=目标时无意义
-  const done = startWeight.value - latestWeight.value;
-  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
-});
-// 目标方向：减重（目标<起始）或增重（目标>起始）
-const isWeightLoss = computed(() => {
-  if (startWeight.value === null || targetWeight.value === null) return true;
-  return targetWeight.value < startWeight.value;
-});
-// 体重变化是否朝目标方向（null=无变化，true=向好绿色，false=逆向橙色）
+// 一周内快速上升或伴水肿时提示，不把“减重”当疗效目标
 const isWeightChangeGood = computed(() => {
   if (weightChange.value === null || weightChange.value === 0) return null;
-  if (isWeightLoss.value) return weightChange.value < 0; // 减重：变轻为好
-  return weightChange.value > 0; // 增重：变重为好
+  return weightChange.value <= 0.5;
 });
 
 // ─── 心血管风险概览（读取健康档案中的血压/心率/LDL-C 指标） ───
 const cardioValues = computed(() => {
   const id = store.user?.id;
   if (!id) return { sbp: null, dbp: null, hr: null, ldl: null };
-  const values = metricValuesFor(id, activeCampId.value) || {};
+  const values = store.getEffectiveMetricValues(id, activeCampId.value) || {};
   const latest = (key: string) => {
     const item = values[key];
     return item ? (item.afterValue ?? item.beforeValue ?? null) : null;
@@ -100,6 +73,9 @@ const cardioRisk = computed(() => {
 const activePrescription = computed(() =>
   store.user?.id ? store.getStudentPrescription(store.user.id, activeCampId.value) : null,
 );
+const activeNutrition = computed(() =>
+  store.user?.id ? store.getStudentNutritionPrescription(store.user.id, activeCampId.value) : null,
+);
 
 const teamThread = computed(() =>
   store.user?.id ? store.getStudentChatThread(store.user.id, activeCampId.value) : null,
@@ -113,6 +89,18 @@ const openTeamFollowup = () => {
   const thread = store.getStudentChatThread(sid, activeCampId.value);
   if (thread) store.openChatThread(thread.id);
   else store.openChatForStudent(sid, activeCampId.value);
+};
+const goInternetHospital = () => {
+  const url = (import.meta as any).env?.VITE_INTERNET_HOSPITAL_URL as string | undefined;
+  if (url) {
+    window.open(url, '_blank');
+    return;
+  }
+  showToast({
+    message: '正式环境将跳转第三方互联网医院；图文/视频问诊按平台规则挂号收费，本营不承诺免费或无限次',
+    position: 'top',
+    duration: 4500,
+  });
 };
 
 // ─── 营期切换器（多期时显示） ──────────────────────────────
@@ -155,6 +143,7 @@ const campStudents = computed(() => {
 const campDiet = computed(() => activeCampId.value ? store.getCampDietRecords(activeCampId.value) : store.dietRecords);
 const campEx = computed(() => activeCampId.value ? store.getCampExerciseRecords(activeCampId.value) : store.exerciseRecords);
 const campWt = computed(() => activeCampId.value ? store.getCampWeightRecords(activeCampId.value) : store.weightRecords);
+const campBp = computed(() => activeCampId.value ? store.getCampBpRecords(activeCampId.value) : store.bpRecords);
 const campManual = computed(() => activeCampId.value ? store.getCampManualScoreRecords(activeCampId.value) : store.manualScoreRecords);
 
 // 消息未读数（与消息中心/活动/档案等各学员页底部「消息」Tab 角标口径一致：批注 + 系统通知）
@@ -276,12 +265,14 @@ const activityPreview = computed(() => {
   const cWt = campWt.value;
 
   if (activityConfig.value.weightMilestone) {
-    const myWeights = cWt.filter(isMine).sort((a, b) => a.date.localeCompare(b.date));
-    const startW = myWeights.length > 0 ? myWeights[0].weight : null;
-    const milestones = computeWeightMilestones(myWeights, startW);
-    const topMilestone = milestones.find(m => !m.achieved) || milestones[milestones.length - 1];
+    const milestones = computeCardioMilestones(
+      cDiet.filter(isMine),
+      cEx.filter(isMine),
+      campBp.value.filter(isMine),
+    );
+    const topMilestone = milestones.find((m) => !m.achieved) || milestones[milestones.length - 1];
     items.push({
-      label: topMilestone.achieved ? topMilestone.label + ' ✓' : '达标 ' + Math.round(topMilestone.threshold * 100) + '%',
+      label: topMilestone.achieved ? topMilestone.label + ' ✓' : topMilestone.label,
       progress: topMilestone.achieved ? '已达标' : Math.round(topMilestone.progress * 100) + '%',
       color: '#FF976A',
     });
@@ -409,12 +400,11 @@ const dailySummary = computed(() => {
 });
 
 const showDailySummary = computed(() => dailySummary.value !== null && !dailySummaryDismissed.value);
-// 昨日体重变化颜色（方向感知：增重时变重为好，减重时变轻为好）
+// 昨日体重变化只提示体液波动方向，不按减重目标着色
 const dailySummaryWeightColor = computed(() => {
   const wc = dailySummary.value?.weightChange;
   if (wc === null || wc === undefined || wc === 0) return 'text-gray-900';
-  if (isWeightLoss.value) return wc < 0 ? 'text-[#0B5FD7]' : 'text-orange-500';
-  return wc > 0 ? 'text-[#0B5FD7]' : 'text-orange-500';
+  return wc > 1 ? 'text-orange-500' : 'text-gray-900';
 });
 const dismissDailySummary = () => {
   dailySummaryDismissed.value = true;
@@ -660,15 +650,17 @@ onActivated(() => {
     </div>
 
     <div class="flex-1 px-5 pt-5 space-y-5 relative z-20">
+      <CampFlowCard />
+
       <!-- 体重 + 排名（2列卡片） -->
       <div class="grid grid-cols-2 gap-4 items-stretch">
-        <!-- 最新体重卡（含体重变化 + 目标进度） -->
+        <!-- 体重仅作体液潴留参考，不设置减重目标 -->
         <Card :class="['flex flex-col justify-center p-5 border-0 relative overflow-hidden h-full transition-all', campNotStarted ? 'cursor-not-allowed opacity-60 grayscale' : 'cursor-pointer hover:shadow-lg shadow-[0_4px_20px_-8px_rgba(15,23,42,0.14)]']" @click="guardCheckin('weight-checkin')">
           <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#0B5FD7]/20 to-blue-100 rounded-full blur-2xl transform translate-x-1/4 -translate-y-1/4 z-0 pointer-events-none"></div>
           <div class="relative z-10">
             <div class="flex items-center gap-1 mb-2">
-              <Target class="w-4 h-4 text-[#0B5FD7] shrink-0" />
-              <div class="text-xs text-gray-500 font-bold truncate">体重管理</div>
+              <Scale class="w-4 h-4 text-[#0B5FD7] shrink-0" />
+              <div class="text-xs text-gray-500 font-bold truncate">体重 / 体液参考</div>
             </div>
             <div class="flex items-end gap-1">
               <span class="text-3xl font-black text-gray-900 tracking-tighter truncate">{{ latestWeight ?? '--' }}</span>
@@ -680,14 +672,8 @@ onActivated(() => {
               <Minus v-else class="w-3 h-3" />
               较开营 {{ weightChange > 0 ? '+' : '' }}{{ weightChange }}kg
             </div>
-            <div v-if="targetProgress !== null" class="mt-2">
-              <div class="h-1 bg-gray-100 rounded-full overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-700" :class="isWeightLoss ? 'bg-gradient-to-r from-[#0B5FD7] to-[#0A54C0]' : 'bg-gradient-to-r from-[#1677FF] to-[#0958d9]'" :style="{ width: targetProgress + '%' }"></div>
-              </div>
-              <div class="text-[10px] text-gray-400 mt-1">
-                <template v-if="gapToTarget !== null && gapToTarget <= 0">已达成{{ isWeightLoss ? '减重' : '增重' }}目标 🎉</template>
-                <template v-else>距{{ isWeightLoss ? '减重' : '增重' }}目标 {{ Math.abs(gapToTarget) }}kg · {{ targetProgress }}%</template>
-              </div>
+            <div class="mt-2 rounded-lg bg-blue-50/70 px-2 py-1.5 text-[9px] leading-relaxed text-gray-500">
+              关注 1 周内快速上升、脚踝水肿、气短或夜间憋醒；体重不作为主疗效指标。
             </div>
           </div>
         </Card>
@@ -763,6 +749,15 @@ onActivated(() => {
               在线随访
             </button>
           </div>
+          <div class="mt-2 flex items-center justify-between rounded-xl border border-gray-100 bg-white/80 px-3 py-2">
+            <div>
+              <div class="text-[10px] font-bold text-gray-700">互联网医院在线问诊</div>
+              <div class="mt-0.5 text-[9px] text-gray-400">跳转第三方平台 · 挂号与收费按平台规则</div>
+            </div>
+            <button class="rounded-full bg-[#0B5FD7]/10 px-2.5 py-1 text-[9px] font-bold text-[#0B5FD7]" @click="goInternetHospital">
+              去问诊
+            </button>
+          </div>
         </div>
       </Card>
 
@@ -814,6 +809,41 @@ onActivated(() => {
         </p>
       </Card>
 
+      <!-- 营养师发布的个体化饮食处方 -->
+      <Card class="p-4 border-0 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.14)]">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <Coffee class="w-4 h-4 text-[#0B5FD7]" />
+            <span class="text-sm font-bold text-gray-900">我的饮食处方</span>
+          </div>
+          <span v-if="activeNutrition" class="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">营养师已发布</span>
+          <span v-else class="rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">待营养评估</span>
+        </div>
+        <template v-if="activeNutrition">
+          <p class="mt-2 text-[11px] leading-relaxed text-gray-600">{{ activeNutrition.assessment }}</p>
+          <div class="mt-2 grid grid-cols-3 gap-2">
+            <div class="rounded-xl bg-blue-50/70 p-2 text-center">
+              <div class="text-[9px] text-gray-400">盐</div>
+              <div class="mt-0.5 text-[10px] font-bold text-[#0B5FD7]">{{ activeNutrition.saltTarget }}</div>
+            </div>
+            <div class="rounded-xl bg-amber-50/70 p-2 text-center">
+              <div class="text-[9px] text-gray-400">烹调油</div>
+              <div class="mt-0.5 text-[10px] font-bold text-amber-600">{{ activeNutrition.oilTarget }}</div>
+            </div>
+            <div class="rounded-xl bg-emerald-50/70 p-2 text-center">
+              <div class="text-[9px] text-gray-400">蛋白质</div>
+              <div class="mt-0.5 text-[10px] font-bold text-emerald-600">{{ activeNutrition.proteinTarget }}</div>
+            </div>
+          </div>
+          <button v-if="store.hasPermission('menu.diet')" class="mt-3 w-full rounded-xl border border-[#0B5FD7]/20 bg-white py-2 text-[11px] font-bold text-[#0B5FD7] active:bg-blue-50" @click="store.setCurrentView('nutrition-prescription')">
+            查看完整食谱与忌口
+          </button>
+        </template>
+        <p v-else class="mt-3 rounded-xl bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-500">
+          营养师将结合血压、血脂、肾功能和用药情况开具个体化饮食处方。等待期间请继续低盐、少油、规律三餐。
+        </p>
+      </Card>
+
       <!-- 每日打卡任务 -->
       <div>
         <h3 class="text-sm font-bold text-gray-900 mb-3 ml-1 flex items-center gap-1.5">
@@ -850,7 +880,7 @@ onActivated(() => {
                 <Scale class="h-6 w-6" />
               </div>
               <div class="text-sm font-bold text-gray-900 mb-0.5">体重记录</div>
-              <div :class="['text-[10px]', campNotStarted ? 'text-gray-400' : todayWeightDone ? 'text-[#0B5FD7] font-bold' : 'text-gray-400']">{{ campNotStarted ? '营期未开始' : (todayWeightDone ? '已完成 ✓' : '见证蜕变') }}</div>
+              <div :class="['text-[10px]', campNotStarted ? 'text-gray-400' : todayWeightDone ? 'text-[#0B5FD7] font-bold' : 'text-gray-400']">{{ campNotStarted ? '营期未开始' : (todayWeightDone ? '已完成 ✓' : '记录体液') }}</div>
             </div>
           </Card>
         </div>

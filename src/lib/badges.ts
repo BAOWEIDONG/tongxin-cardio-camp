@@ -1,5 +1,5 @@
 import { eachDayOfInterval, format, isValid, startOfWeek } from 'date-fns';
-import type { BadgeCondition, BadgeConfig, BadgeRecord, Camp, DietRecord, ExerciseRecord, WeightRecord } from '../types';
+import type { BadgeCondition, BadgeConfig, BadgeRecord, BpRecord, Camp, DietRecord, ExerciseRecord, WeightRecord } from '../types';
 
 interface StudentLike { id: string }
 
@@ -109,6 +109,10 @@ export interface OneTimeBadgeContext {
   weightLossPercent: number | null;
   /** 脂肪量下降（正数=减脂） */
   fatLossKg: number | null;
+  /** 整个营期累计打卡天数 */
+  totalCheckinDays: number;
+  bpRecords: BpRecord[];
+  dietRecords: DietRecord[];
   exerciseRecords: ExerciseRecord[];
   earnedAt: string;
 }
@@ -129,6 +133,12 @@ export function evaluateOneTimeCondition(
       return (ctx.weightLossPercent ?? 0) >= t;
     case 'fat_loss_kg':
       return (ctx.fatLossKg ?? 0) >= t;
+    case 'low_salt_days':
+      return new Set(ctx.dietRecords.filter((r) => r.lowSalt).map((r) => r.date.substring(0, 10))).size >= t;
+    case 'checkin_days_total':
+      return ctx.totalCheckinDays >= t;
+    case 'bp_record_days':
+      return new Set(ctx.bpRecords.map((r) => r.date.substring(0, 10))).size >= t;
     case 'early_exercise_count':
       return ctx.exerciseRecords.filter((r) => {
         const time = r.date.split(' ')[1] || '';

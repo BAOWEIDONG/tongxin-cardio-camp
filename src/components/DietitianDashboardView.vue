@@ -6,6 +6,7 @@ import { useAppStore } from '../store/app';
 import { useDietitianCounts } from '../lib/dietitianCounts';
 import { campDateRange } from '../lib/camps';
 import { Card } from './ui';
+import CampFlowCard from './CampFlowCard.vue';
 import { Users, UserCircle, LogOut, CheckCircle, XCircle, Search, X, FileText, Settings, ChevronDown, CalendarDays, BarChart3, ChevronRight, MessageCircle } from 'lucide-vue-next';
 import { format, subDays } from 'date-fns';
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem, Popup as VanPopup } from 'vant';
@@ -39,6 +40,7 @@ const campStudents = computed(() => {
   if (!activeCampId.value) return store.getAllStudents();
   return store.getStudentsByCamp(activeCampId.value);
 });
+const flowStudent = computed(() => campStudents.value[0] || null);
 
 // 按营期过滤打卡记录（null = 全部记录）
 const campDietRecords = computed(() => activeCampId.value ? store.getCampDietRecords(activeCampId.value) : store.dietRecords);
@@ -193,6 +195,13 @@ const maskPhone = (phone: string) => phone.replace(/(\d{3})\d{4}(\d{4})/, '$1***
         </button>
       </div>
 
+      <CampFlowCard
+        v-if="flowStudent"
+        :student-id="flowStudent.id"
+        :camp-id="activeCampId"
+        :subject-name="flowStudent.name"
+      />
+
       <!-- 学员打卡情况看板：首页可直接切换昨天/今天，点卡片看详情 -->
       <Card class="p-4 cursor-pointer border-0 shadow-sm bg-gradient-to-br from-[#FF976A]/12 to-white active:scale-[0.99] transition-transform" @click="openAttendanceBoard">
         <div class="flex items-center gap-2 mb-3">
@@ -313,7 +322,7 @@ const maskPhone = (phone: string) => phone.replace(/(\d{3})\d{4}(\d{4})/, '$1***
                 </div>
               </div>
 
-              <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF976A]" @click.stop="openStudentChat(student.id)">
+              <button v-if="store.hasPermission('action.chat')" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF976A]" @click.stop="openStudentChat(student.id)">
                 <MessageCircle class="h-4 w-4" />
               </button>
             </div>

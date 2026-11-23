@@ -4,7 +4,6 @@ import { useAppStore } from '../store/app';
 import { NavBar, Card, ChartRulePopup, StudentTabbar } from './ui';
 import { Activity, TrendingDown, Dumbbell, Download, BookOpen, Trophy, ChevronRight } from 'lucide-vue-next';
 import { Popup as VanPopup } from 'vant';
-import { metricValuesFor } from '../mock/data';
 import { generatePersonalJourney } from '../lib/journey';
 import { campDaysOf, elapsedCampDays } from '../lib/camps';
 import { generateStudentReport } from '../lib/campReport';
@@ -65,7 +64,7 @@ const report = computed(() =>
   generateStudentReport(
     { id: studentId.value, name: studentName.value, gender: studentGender.value },
     store.metricConfigs,
-    metricValuesFor(studentId.value, activeCampId.value),
+    store.getEffectiveMetricValues(studentId.value, activeCampId.value),
     studentDiets.value,
     studentExercises.value,
     studentWeights.value,

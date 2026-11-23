@@ -5,7 +5,6 @@ import { useDeferred } from '../composables/useDeferred';
 import { campDaysOf, elapsedCampDays } from '../lib/camps';
 import { NavBar, Card } from './ui';
 import { Building2, Users, Flame, Sparkles, Download, ShieldCheck, HeartPulse, Dumbbell } from 'lucide-vue-next';
-import { metricValuesFor } from '../mock/data';
 import { generateDietitianSummary, generateEnterpriseReport } from '../lib/campReport';
 import { exportReport } from '../lib/exportPDF';
 
@@ -26,7 +25,7 @@ const campWeightRecords = computed(() => store.selectedCampId ? store.getCampWei
 const campMetricValues = computed(() => {
   const cid = store.selectedCampId;
   const out: Record<string, Record<string, import('../lib/medicalData').MetricValue>> = {};
-  campStudents.value.forEach((s) => { out[s.id] = metricValuesFor(s.id, cid); });
+  campStudents.value.forEach((s) => { out[s.id] = store.getEffectiveMetricValues(s.id, cid); });
   return out;
 });
 

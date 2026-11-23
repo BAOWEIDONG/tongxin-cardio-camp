@@ -25,6 +25,7 @@ const VIEW_IMPORTERS: Record<string, () => Promise<{ default: Component }>> = {
   upload: () => import('./components/UploadView.vue'),
   dashboard: () => import('./components/StudentDashboardView.vue'),
   'health-profile': () => import('./components/HealthProfileView.vue'),
+  'nutrition-prescription': () => import('./components/NutritionPrescriptionView.vue'),
   exercise: () => import('./components/ExerciseView.vue'),
   diet: () => import('./components/DietView.vue'),
   'weight-checkin': () => import('./components/WeightCheckinView.vue'),
@@ -69,10 +70,10 @@ const VIEW_IMPORTERS: Record<string, () => Promise<{ default: Component }>> = {
 
 // 各角色底部 tab 与常用子页（角色预取，配合下方全量预取双保险）
 const ROLE_TABS: Record<string, string[]> = {
-  student: ['dashboard', 'activity-hub', 'messages', 'health-profile', 'exercise', 'diet', 'weight-checkin', 'points-mall', 'calendar', 'reward'],
-  dietitian: ['dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'fulfillment-center', 'reward-config', 'dietitian-student-detail', 'account-manage', 'admin-console', 'permission-config'],
+  student: ['dashboard', 'activity-hub', 'messages', 'health-profile', 'nutrition-prescription', 'exercise', 'diet', 'weight-checkin', 'points-mall', 'calendar', 'reward'],
+  dietitian: ['dietitian-dashboard', 'dietitian-unannotated-list', 'dietitian-config', 'fulfillment-center', 'reward-config', 'dietitian-student-detail', 'nutrition-prescription', 'account-manage', 'admin-console', 'permission-config'],
   coach: ['coach-dashboard', 'coach-student-detail', 'coach-unannotated-list', 'activity-upload', 'activities-list'],
-  doctor: ['doctor-dashboard', 'online-chat'],
+  doctor: ['doctor-dashboard', 'online-chat', 'nutrition-prescription'],
 };
 let prefetchedRole = false;
 function prefetchTabs(role: string) {
